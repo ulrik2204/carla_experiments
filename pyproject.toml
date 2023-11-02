@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "carla-test"
+version = "0.1.0"
+description = "Testing repo for the carla api"
+authors = ["Ulrik Røsby <ulrik@rosby.no>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "3.8.10"
+carla = "^0.9.14"
+numpy = "1.21.0"
+tqdm = "^4.66.1"
+mypy = "^1.6.0"
+black = "^23.9.1"
+flake8 = "^6.1.0"
+command = "^0.1.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
