@@ -23,6 +23,7 @@ def game_loop(
             time.sleep(0.05)
             world.tick()
         except (KeyboardInterrupt, Exception):
+            print("Exiting...")
             for actor in initial_actors.values():
                 actor.destroy()  # type: ignore
             sys.exit()
