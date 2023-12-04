@@ -2,53 +2,25 @@ from __future__ import annotations
 
 import random
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Generic, List, Tuple, Type, TypeVar, cast
+from typing import Callable, List, Tuple, TypeVar, cast
 
 import carla
 
-
-class Globals:
-    sensor_list: List[carla.Sensor] = []
-
-
-global_vars = Globals()
-
-
-class Constant:
-    def __new__(cls):
-        raise TypeError("Cannot instantiate constant class")
-
+from carla_experiments.carla_utils.types_carla_utils import (
+    SensorBlueprint,
+    SensorBlueprintCollection,
+)
 
 TSensorData = TypeVar("TSensorData")
 
 
 @dataclass
-class SensorBlueprint(Generic[TSensorData]):
-    name: str
-    sensor_data_type: Type[TSensorData]
-
-
-class SensorBlueprintCollection(Constant, Generic[TSensorData]):
-    CAMERA_RGB = SensorBlueprint("sensor.camera.rgb", carla.Image)
-    CAMERA_DEPTH = SensorBlueprint("sensor.camera.depth", carla.Image)
-    CAMERA_SEMANTIC_SEGMENTATION = SensorBlueprint(
-        "sensor.camera.semantic_segmentation", carla.Image
-    )
-    CAMERA_DVS = SensorBlueprint("sensor.camera.dvs", carla.Image)
-    LIDAR_RANGE = SensorBlueprint("sensor.lidar.ray_cast", carla.LidarMeasurement)
-    LIDAR_SEMANTIC_SEGMENTATION = SensorBlueprint(
-        "sensor.lidar.semantic_segmentation", carla.LidarMeasurement
-    )
-    RADAR_RANGE = SensorBlueprint("sensor.other.radar", carla.RadarMeasurement)
-    GNSS = SensorBlueprint("sensor.other.gnss", carla.GnssMeasurement)
-    IMU = SensorBlueprint("sensor.other.imu", carla.IMUMeasurement)
-    COLLISION = SensorBlueprint("sensor.other.collision", carla.CollisionEvent)
-    LANE_INVASION = SensorBlueprint(
-        "sensor.other.lane_invasion", carla.LaneInvasionEvent
-    )
-    OBSTACLE = SensorBlueprint("sensor.other.obstacle", carla.ObstacleDetectionEvent)
+class CarlaContext:
+    sensor_list: List[carla.Sensor]
+    spectator: carla.Actor
 
 
 def spawn_sensor(
@@ -62,7 +34,6 @@ def spawn_sensor(
         [carla.ActorBlueprint], carla.ActorBlueprint
     ] = lambda x: x,
     on_measurement_received: Callable[[TSensorData], None] = lambda _: None,
-    global_sensor_list: List[carla.Sensor] = global_vars.sensor_list,
 ) -> carla.Sensor:
     sensor_blueprint = world.get_blueprint_library().find(blueprint.name)
     sensor_blueprint = modify_blueprint_fn(sensor_blueprint)
@@ -81,7 +52,6 @@ def spawn_sensor(
     )
 
     sensor_object.listen(on_measurement_received)
-    global_sensor_list.append(sensor_object)
 
     return sensor_object
 
@@ -108,22 +78,57 @@ def spawn_ego_vehicle(world: carla.World) -> carla.Vehicle:
     # --------------
     # Spectator on ego position
     # --------------
-    spectator = world.get_spectator()
-    # world_snapshot =
-    world.wait_for_tick()
-    spectator.set_transform(ego_vehicle.get_transform())
     return ego_vehicle
 
 
-def main():
+def initialize_carla():
     client = carla.Client("localhost", 2000)
     world = client.get_world()
+    settings = world.get_settings()
+    settings.synchronous_mode = True  # Enables synchronous mode
+    settings.fixed_delta_seconds = 0.05
+    world.apply_settings(settings)
+    return client, world
+
+
+def main():
+    _, world = initialize_carla()
     timestampstr = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    sensor_list: List[carla.Actor] = []
+    spectator = world.get_spectator()
+    # world_snapshot =
+    # world.wait_for_tick()
     ego_vehicle = spawn_ego_vehicle(world)
     ego_vehicle.set_autopilot(True)
 
+    spectator = world.get_spectator()
+    vehicle_transform = ego_vehicle.get_transform()
+    spectator_transform = carla.Transform(
+        vehicle_transform.transform(carla.Location(x=-8, z=4)),
+        carla.Rotation(pitch=-15),
+    )
+    spectator.set_transform(spectator_transform)
+
     def save_image_to_disk(image: carla.Image):
         image.save_to_disk(f"output/{timestampstr}/{image.frame:6d}.jpg")
+
+    def set_camera_attributes(cam_bp: carla.ActorBlueprint):
+        cam_bp.set_attribute("image_size_x", str(1920))
+        cam_bp.set_attribute("image_size_y", str(1080))
+        cam_bp.set_attribute("fov", str(105))
+        return cam_bp
+
+    rgb_cam = spawn_sensor(
+        world,
+        SensorBlueprintCollection.CAMERA_RGB,
+        location=(2, 0, 1),
+        rotation=(0, 0, 0),
+        attach_to=ego_vehicle,
+        modify_blueprint_fn=set_camera_attributes,
+        on_measurement_received=save_image_to_disk,
+    )
+    sensor_list.append(rgb_cam)
+    time.sleep(1)
 
     # --------------
     # Spawn attached RGB camera
@@ -145,22 +150,6 @@ def main():
     #     ),
     # )
     # ego_cam.listen(something)
-
-    def set_camera_attributes(cam_bp: carla.ActorBlueprint):
-        cam_bp.set_attribute("image_size_x", str(1920))
-        cam_bp.set_attribute("image_size_y", str(1080))
-        cam_bp.set_attribute("fov", str(105))
-        return cam_bp
-
-    spawn_sensor(
-        world,
-        SensorBlueprintCollection.CAMERA_RGB,
-        location=(2, 0, 1),
-        rotation=(0, 0, 0),
-        attach_to=ego_vehicle,
-        modify_blueprint_fn=set_camera_attributes,
-        on_measurement_received=save_image_to_disk,
-    )
     # --------------
     # Add collision sensor to ego vehicle.
     # --------------
@@ -241,9 +230,19 @@ def main():
 
     while True:
         try:
+            # Update the spectator's transform to follow the vehicle
+            vehicle_transform = ego_vehicle.get_transform()
+            spectator_transform.location = vehicle_transform.location + carla.Location(
+                x=-8, z=4
+            )
+            spectator_transform.rotation.yaw = vehicle_transform.rotation.yaw
+            spectator.set_transform(spectator_transform)
+            time.sleep(0.05)
+
             world.tick()
         except KeyboardInterrupt:
-            [sensor.destroy() for sensor in global_vars.sensor_list]
+            [sensor.destroy() for sensor in sensor_list]
+            ego_vehicle.destroy()
             sys.exit()
 
 
