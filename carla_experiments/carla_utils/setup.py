@@ -1,30 +1,30 @@
 import sys
-from typing import List, Protocol
+import time
+from typing import Any, List, Mapping, TypeVar, cast
 
 import carla
 
+from carla_experiments.carla_utils.types_carla_utils import CarlaTask
 
-class CarlaTask(Protocol):
-    def __call__(
-        self, world: carla.World, actors: List[carla.Actor]
-    ) -> List[carla.Actor]:
-        ...
+# TActors = TypeVar("TActors", bound=Dict[str, Union[carla.Actor, carla.Vehicle]])
+TActors = TypeVar("TActors", bound=Mapping[str, Any])
 
 
 def game_loop(
     world: carla.World,
-    tasks: List[CarlaTask],
-    initial_actors: List[carla.Actor],
+    tasks: List[CarlaTask[TActors]],
+    initial_actors: TActors,
 ):
-    actors = [*initial_actors]
+    actors = cast(TActors, {**initial_actors})
     while True:
         try:  # in case of a crash, try to recover and continue
             for task in tasks:
                 actors = task(world, actors)
+            time.sleep(0.05)
             world.tick()
-        except KeyboardInterrupt:
-            for actor in initial_actors:
-                actor.destroy()
+        except (KeyboardInterrupt, Exception):
+            for actor in initial_actors.values():
+                actor.destroy()  # type: ignore
             sys.exit()
 
 

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Generic, Type, TypeVar
+from typing import Any, Generic, Mapping, Protocol, Type, TypeVar
 
 import carla
 
@@ -10,6 +10,14 @@ class Constant:
 
 
 TSensorData = TypeVar("TSensorData")
+
+# It is suppsed to have to be a Dict[str, carla.Actor], but it does not support extensions of carla.Actor
+TActors = TypeVar("TActors", bound=Mapping[str, Any])
+
+
+class CarlaTask(Protocol, Generic[TActors]):
+    def __call__(self, world: carla.World, actors: TActors) -> TActors:
+        ...
 
 
 @dataclass
