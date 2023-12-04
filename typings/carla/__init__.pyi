@@ -2876,7 +2876,7 @@ class LightManager:
         :param lights: (list[Light]) List of lights to be switched on.
         """
         ...
-    def get_all_lights(self, light_group: LightGroup = LightGroup) -> list[Light]:
+    def get_all_lights(self, light_group: Optional[LightGroup] = None) -> list[Light]:
         """
         Returns a list containing the lights in a certain group. By default, the group is `None`.
 
@@ -3188,7 +3188,7 @@ class Map:
     name: str
     """The name of the map. It corresponds to the .umap from Unreal Engine that is loaded from a CARLA server, which then references to the .xodr road description."""
 
-    def __init__(self, name: str, xodr_content: str) -> list[Transform]:
+    def __init__(self, name: str, xodr_content: str) -> None:
         """
         Constructor for this class. Though a map is automatically generated when initializing the world, using this method in no-rendering mode facilitates working with an .xodr without any CARLA server running.
 
@@ -3283,7 +3283,7 @@ class Map:
         self,
         location: Location,
         project_to_road: bool = True,
-        lane_type: LaneType = LaneType,
+        lane_type: LaneType = LaneType.Any,
     ) -> Waypoint:
         """
                        Returns a waypoint that can be located in an exact location or translated to the center of the nearest lane. Said lane type can be defined using flags such as `LaneType.Driving & LaneType.Shoulder`.
@@ -3706,7 +3706,7 @@ class Osm2Odr:
     Class that converts an OpenStreetMap map to OpenDRIVE format, so that it can be loaded in CARLA. Find out more about this feature in the [docs](tuto_G_openstreetmap.md).
     """
 
-    def convert(self, osm_file: str, settings: OSM2ODRSettings) -> str:
+    def convert(self, osm_file: str, settings: Osm2OdrSettings) -> str:
         """
         Takes the content of an .osm file (OpenStreetMap format) and returns the content of the .xodr (OpenDRIVE format) describing said map. Some parameterization is passed to do the conversion.
 
@@ -3794,11 +3794,6 @@ class Sensor(Actor):
         The function the sensor will be calling to every time a new measurement is received. This function needs for an argument containing an object type carla.SensorData to work with.
 
         :param callback: (function) The called function with one argument containing the sensor data.
-        """
-        ...
-    def is_listening(self):
-        """
-        Returns whether the sensor is in a listening state.
         """
         ...
     def stop(self):
@@ -4110,7 +4105,9 @@ class Image(SensorData):
         :param color_converter: (ColorConverter)
         """
         ...
-    def save_to_disk(self, path: str, color_converter: ColorConverter = ColorConverter.Raw):
+    def save_to_disk(
+        self, path: str, color_converter: ColorConverter = ColorConverter.Raw
+    ):
         """
         Saves the image to disk using a converter pattern stated as `color_converter`. The default conversion pattern is Raw that will make no changes to the image.
 

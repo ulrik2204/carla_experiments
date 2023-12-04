@@ -1,5 +1,6 @@
 # flake8: noqa
 from __future__ import annotations
+from typing import Optional
 
 import carla
 import numpy as np
@@ -39,7 +40,7 @@ class SpawnActor:
         """ """
         ...
     # type: ignore
-    def __init__(self, blueprint: carla.ActorBlueprint, transform: carla.Transform):
+    def __init__(self, blueprint: carla.ActorBlueprint, transform: carla.Transform, parent: Optional[str] = None):
         """
 
 
