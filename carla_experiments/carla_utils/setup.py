@@ -1,32 +1,27 @@
-import sys
-import time
-from typing import Any, List, Mapping, TypeVar, cast
+from typing import Any, Mapping, TypeVar
 
 import carla
 
-from carla_experiments.carla_utils.types_carla_utils import CarlaTask
-
-# TActors = TypeVar("TActors", bound=Dict[str, Union[carla.Actor, carla.Vehicle]])
 TActors = TypeVar("TActors", bound=Mapping[str, Any])
 
-
-def game_loop(
-    world: carla.World,
-    tasks: List[CarlaTask[TActors]],
-    initial_actors: TActors,
-):
-    actors = cast(TActors, {**initial_actors})
-    while True:
-        try:  # in case of a crash, try to recover and continue
-            for task in tasks:
-                actors = task(world, actors)
-            time.sleep(0.05)
-            world.tick()
-        except (KeyboardInterrupt, Exception):
-            print("Exiting...")
-            for actor in initial_actors.values():
-                actor.destroy()  # type: ignore
-            sys.exit()
+# This does not work, for some reason CARLA does not like having the game loop in a separate function
+# def game_loop(
+#     world: carla.World,
+#     tasks: List[CarlaTask[TActors]],
+#     actors: TActors,
+# ):
+#     # actors = cast(TActors, {**initial_actors})
+#     while True:
+#         try:  # in case of a crash, try to recover and continue
+#             for task in tasks:
+#                 task(world, actors)  # type: ignore
+#             time.sleep(0.01)
+#             world.tick()
+#         except (KeyboardInterrupt, Exception):
+#             print("Exiting...")
+#             for actor in actors:  # TODO: .values()
+#                 actor.destroy()  # type: ignore
+#             sys.exit()
 
 
 def initialize_carla():

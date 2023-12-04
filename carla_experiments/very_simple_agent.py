@@ -1,4 +1,4 @@
-from carla_experiments.carla_utils.setup import game_loop, initialize_carla
+from carla_experiments.carla_utils.setup import initialize_carla
 
 
 def main():
@@ -6,7 +6,7 @@ def main():
     tasks = []
     actors = []
 
-    game_loop(world, tasks, actors)
+    # TODO: create game loop
 
 
 if __name__ == "__main__":

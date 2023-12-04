@@ -198,11 +198,11 @@ def main():
             # Update the spectator's transform to follow the vehicle
             vehicle_transform = ego_vehicle.get_transform()
             spectator_transform.location = vehicle_transform.location + carla.Location(
-                x=-8, z=4
+                z=4
             )
             spectator_transform.rotation.yaw = vehicle_transform.rotation.yaw
             spectator.set_transform(spectator_transform)
-            time.sleep(0.05)
+            time.sleep(0.01)
 
             world.tick()
         except KeyboardInterrupt:
