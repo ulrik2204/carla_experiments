@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import random
 import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, TypeVar, cast
+from typing import List, TypeVar
 
 import carla
 
-from carla_experiments.carla_utils.sensors import spawn_sensor
+from carla_experiments.carla_utils.spawn import spawn_ego_vehicle, spawn_sensor
 from carla_experiments.carla_utils.types_carla_utils import SensorBlueprintCollection
 
 TSensorData = TypeVar("TSensorData")
@@ -19,31 +18,6 @@ TSensorData = TypeVar("TSensorData")
 class CarlaContext:
     sensor_list: List[carla.Sensor]
     spectator: carla.Actor
-
-
-def spawn_ego_vehicle(world: carla.World) -> carla.Vehicle:
-    ego_bp = world.get_blueprint_library().find("vehicle.tesla.model3")
-    ego_bp.set_attribute("role_name", "ego")
-    print("\nEgo role_name is set")
-    ego_color = random.choice(ego_bp.get_attribute("color").recommended_values)
-    ego_bp.set_attribute("color", ego_color)
-    print("\nEgo color is set")
-
-    spawn_points = world.get_map().get_spawn_points()
-    number_of_spawn_points = len(spawn_points)
-
-    if 0 < number_of_spawn_points:
-        random.shuffle(spawn_points)
-        ego_transform = spawn_points[0]
-        ego_vehicle = cast(carla.Vehicle, world.spawn_actor(ego_bp, ego_transform))
-        print("\nEgo is spawned")
-    else:
-        raise Exception("Could not find any spawn points")
-
-    # --------------
-    # Spectator on ego position
-    # --------------
-    return ego_vehicle
 
 
 def initialize_carla():

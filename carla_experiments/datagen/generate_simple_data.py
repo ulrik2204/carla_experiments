@@ -6,10 +6,9 @@ from typing import TypedDict
 
 import carla
 
-from carla_experiments.carla_utils.sensors import spawn_sensor
 from carla_experiments.carla_utils.setup import game_loop, initialize_carla
+from carla_experiments.carla_utils.spawn import spawn_ego_vehicle, spawn_sensor
 from carla_experiments.carla_utils.types_carla_utils import SensorBlueprintCollection
-from carla_experiments.tutorial_generate_data import spawn_ego_vehicle
 
 
 class ResnetActors(TypedDict):

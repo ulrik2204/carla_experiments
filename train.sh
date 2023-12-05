@@ -1,0 +1,1 @@
+poetry run python -m carla_experiments.train.train_simple $@
