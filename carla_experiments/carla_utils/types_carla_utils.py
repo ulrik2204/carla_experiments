@@ -16,7 +16,7 @@ TActors = TypeVar("TActors", bound=Mapping[str, Any])
 
 
 class CarlaTask(Protocol, Generic[TActors]):
-    def __call__(self, world: carla.World, actors: TActors) -> TActors:
+    def __call__(self, world: carla.World, actors: TActors) -> None:
         ...
 
 
