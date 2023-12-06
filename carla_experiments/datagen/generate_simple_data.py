@@ -61,10 +61,12 @@ def setup_camera(
 
     def save_image_and_controls(image: carla.Image):
         control = ego_vehicle.get_control()
+        waypoint = world.get_map().get_waypoint(ego_vehicle.get_location())
         state = {
             "steer": control.steer,
             "throttle": control.throttle,
             "brake": control.brake,
+            "waypoint": waypoint,
         }
         with open(controls_base_path / f"{image.frame:6d}.json", "w") as f:
             json.dump(state, f)

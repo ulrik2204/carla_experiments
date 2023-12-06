@@ -79,7 +79,7 @@ class SimpleDataset(Dataset):
 def get_training_image_transforms():
     return transforms.Compose(
         [
-            transforms.Resize((512, 256)),
+            transforms.Resize((256, 128)),
             transforms.ToTensor(),
         ]
     )
@@ -88,7 +88,7 @@ def get_training_image_transforms():
 def get_val_test_transforms():
     return transforms.Compose(
         [
-            transforms.Resize((512, 256)),
+            transforms.Resize((256, 128)),
             transforms.ToTensor(),
         ]
     )

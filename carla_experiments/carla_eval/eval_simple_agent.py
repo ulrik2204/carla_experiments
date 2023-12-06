@@ -11,7 +11,7 @@ from carla_experiments.carla_utils.setup import game_loop, initialize_carla
 from carla_experiments.carla_utils.spawn import spawn_ego_vehicle, spawn_sensor
 from carla_experiments.carla_utils.types_carla_utils import SensorBlueprintCollection
 from carla_experiments.datasets.simple_dataset import get_val_test_transforms
-from carla_experiments.models.simple import SimpleLineFollowing
+from carla_experiments.models.simple import SimpleLineFollowing50
 from carla_experiments.train.training_utils import load_state_dict
 
 
@@ -24,10 +24,8 @@ start_time = time.time()
 
 
 def load_line_following_model():
-    model = SimpleLineFollowing(3, True)
-    model, *_ = load_state_dict(
-        model, None, "./.weights/051659-loss0.08324056369697592.pt"
-    )
+    model = SimpleLineFollowing50(3, True)
+    model, *_ = load_state_dict(model, None, "./.weights/060513-loss0.0308.pt")
     return model
 
 
@@ -40,8 +38,8 @@ def predict_vehicle_controls(image):
         output = output.squeeze(0)
         steer = float(output[0].item())
         throttle = float(output[1].item())
-        # brake = float(output[2].item())
-        return steer, throttle, 0
+        brake = float(output[2].item())
+        return steer, throttle, 0.0 if brake < 0.5 else brake
 
 
 def get_ego_vehicle(actors: SimpleEvalActors) -> carla.Vehicle:
@@ -81,6 +79,8 @@ def setup_camera(world: carla.World, ego_vehicle: carla.Vehicle) -> carla.Sensor
         return cam_bp
 
     def control_vehicle_from_image(image: carla.Image):
+        # This should instead put the image into a queue or dict to gather data for the
+        # model to control the vehicle with multiple sensors
         array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
         array = copy.deepcopy(array)
         array = np.reshape(array, (image.height, image.width, 4))
@@ -99,7 +99,7 @@ def setup_camera(world: carla.World, ego_vehicle: carla.Vehicle) -> carla.Sensor
                 "Brake:",
                 brake,
             )
-            print("Image: ", array)
+            # print("Image: ", array)
         control = carla.VehicleControl(throttle, steer, brake)
         ego_vehicle.apply_control(control)
 
