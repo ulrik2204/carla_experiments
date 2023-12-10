@@ -10,8 +10,8 @@ from PIL import Image
 from carla_experiments.carla_utils.setup import game_loop, initialize_carla
 from carla_experiments.carla_utils.spawn import spawn_ego_vehicle, spawn_sensor
 from carla_experiments.carla_utils.types_carla_utils import SensorBlueprintCollection
-from carla_experiments.datasets.simple_dataset import get_val_test_transforms
-from carla_experiments.models.simple import SimpleLineFollowing50
+from carla_experiments.datasets.simple_dataset import get_simple_val_test_transforms
+from carla_experiments.models.simple import SimpleLineFollowingB0
 from carla_experiments.train.training_utils import load_state_dict
 
 
@@ -24,8 +24,8 @@ start_time = time.time()
 
 
 def load_line_following_model():
-    model = SimpleLineFollowing50(3, True)
-    model, *_ = load_state_dict(model, None, "./.weights/060513-loss0.0308.pt")
+    model = SimpleLineFollowingB0(3, True)
+    model, *_ = load_state_dict(model, None, "./.weights/agentB0/091148-loss0.0007.pt")
     return model
 
 
@@ -85,7 +85,7 @@ def setup_camera(world: carla.World, ego_vehicle: carla.Vehicle) -> carla.Sensor
         array = copy.deepcopy(array)
         array = np.reshape(array, (image.height, image.width, 4))
         pil_image = Image.fromarray(array[:, :, :3])
-        transforms = get_val_test_transforms()
+        transforms = get_simple_val_test_transforms()
         transformed_image = transforms(pil_image).unsqueeze(0)  # type: ignore
         steer, throttle, brake = predict_vehicle_controls(transformed_image)
         if image.frame % 100 == 0:

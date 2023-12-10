@@ -16,7 +16,12 @@ flake8 = "^6.1.0"
 command = "^0.1.0"
 click = "^8.1.7"
 wandb = "^0.16.0"
+torchmetrics = "^1.2.1"
+matplotlib = "3.6"
 
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.27.1"
 
 [build-system]
 requires = ["poetry-core"]

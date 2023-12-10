@@ -39,10 +39,12 @@ class SimpleDataset(Dataset):
         self.images_arr = []
         for image_path in images_folder.iterdir():
             self.images_arr.append(image_path.as_posix())
+        self.images_arr.sort(key=lambda x: int(x.split("/")[-1].split(".")[0]))
 
         control_paths = []
         for control_path in controls_folder.iterdir():
             control_paths.append(control_path.as_posix())
+        control_paths.sort(key=lambda x: int(x.split("/")[-1].split(".")[0]))
 
         if len(self.images_arr) != len(control_paths):
             raise ValueError("Number of images and controls do not match")
@@ -76,7 +78,7 @@ class SimpleDataset(Dataset):
         return transformed_image, transformed_target
 
 
-def get_training_image_transforms():
+def get_simple_training_image_transforms():
     return transforms.Compose(
         [
             transforms.Resize((256, 128)),
@@ -85,10 +87,34 @@ def get_training_image_transforms():
     )
 
 
-def get_val_test_transforms():
+def get_simple_val_test_transforms():
     return transforms.Compose(
         [
             transforms.Resize((256, 128)),
             transforms.ToTensor(),
         ]
     )
+
+
+class SimpleTimeDataset(SimpleDataset):
+    """Dataset class for a simple drive around in CARLA, but returns the current and last image concatenated
+    with the corresponding controls. This resizes the images to 256x128 and concatenates them along the channels.
+    to [256, 128, 6]. Returns the image as a pytorch tensor.
+
+    Args:
+        SimpleDataset (_type_): _description_
+    """
+
+    to_tensor = transforms.ToTensor()
+
+    def __len__(self):
+        return len(self.images_arr) - 1
+
+    def __getitem__(self, idx):
+        # Concatenate the current and last image and return the current control and the concatenated image
+        last_image, last_control = super().__getitem__(idx)
+        current_image, current_control = super().__getitem__(idx + 1)
+        resized_last = self.to_tensor(last_image.resize((256, 128)))
+        resized_current = self.to_tensor(current_image.resize((256, 128)))
+        concat_image = torch.cat((resized_last, resized_current), dim=2)
+        return concat_image, current_control
