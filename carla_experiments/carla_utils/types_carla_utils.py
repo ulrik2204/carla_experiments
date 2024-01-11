@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Generic, Mapping, Protocol, Type, TypeVar
+from typing import Generic, Protocol, Type, TypeVar
 
 import carla
 
@@ -12,7 +12,7 @@ class Constant:
 TSensorData = TypeVar("TSensorData")
 
 # It is suppsed to have to be a Dict[str, carla.Actor], but it does not support extensions of carla.Actor
-TActors = TypeVar("TActors", bound=Mapping[str, Any])
+TActors = TypeVar("TActors")
 
 
 class CarlaTask(Protocol, Generic[TActors]):
@@ -24,6 +24,9 @@ class CarlaTask(Protocol, Generic[TActors]):
 class SensorBlueprint(Generic[TSensorData]):
     name: str
     sensor_data_type: Type[TSensorData]
+
+    def __hash__(self) -> int:
+        return self.name.__hash__()
 
 
 class SensorBlueprintCollection(Constant, Generic[TSensorData]):
@@ -45,3 +48,5 @@ class SensorBlueprintCollection(Constant, Generic[TSensorData]):
         "sensor.other.lane_invasion", carla.LaneInvasionEvent
     )
     OBSTACLE = SensorBlueprint("sensor.other.obstacle", carla.ObstacleDetectionEvent)
+    SPEEDOMETER = SensorBlueprint("sensor.speedometer", float)
+    OPENDRIVE_MAP = SensorBlueprint("sensor.opendrive_map", str)

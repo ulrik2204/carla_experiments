@@ -104,8 +104,11 @@ def initialize_actors(world: carla.World) -> ResnetActors:
 
 
 def main():
-    _, world = initialize_carla()
+    client, world = initialize_carla()
     actors = initialize_actors(world)
+    # some: Tuple[str, carla.Waypoint] = client.get_trafficmanager().get_next_action(
+    #     actors["ego_vehicle"]
+    # )
     tasks = [follow_camera_task, check_stop_time_task]
     game_loop(world, tasks, actors)
 

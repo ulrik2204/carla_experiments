@@ -1,5 +1,6 @@
 import random
-from typing import Callable, Optional, Tuple, TypeVar, cast
+import time
+from typing import Callable, List, Optional, Tuple, TypeVar, cast
 
 import carla
 
@@ -15,13 +16,17 @@ def spawn_sensor(
     rotation: Tuple[float, float, float],
     attach_to: Optional[carla.Actor] = None,
     attachment_type: carla.AttachmentType = carla.AttachmentType.Rigid,
-    modify_blueprint_fn: Callable[
-        [carla.ActorBlueprint], carla.ActorBlueprint
-    ] = lambda x: x,
+    modify_blueprint_fn: Optional[
+        Callable[[carla.ActorBlueprint], carla.ActorBlueprint]
+    ] = None,
     on_measurement_received: Callable[[TSensorData], None] = lambda _: None,
 ) -> carla.Sensor:
     sensor_blueprint = world.get_blueprint_library().find(blueprint.name)
-    sensor_blueprint = modify_blueprint_fn(sensor_blueprint)
+    sensor_blueprint = (
+        modify_blueprint_fn(sensor_blueprint)
+        if modify_blueprint_fn
+        else sensor_blueprint
+    )
     sensor_location = carla.Location(*location)
     sensor_rotation = carla.Rotation(*rotation)
 
@@ -41,24 +46,39 @@ def spawn_sensor(
     return sensor_object
 
 
-def spawn_ego_vehicle(world: carla.World) -> carla.Vehicle:
-    ego_bp = world.get_blueprint_library().find("vehicle.tesla.model3")
+def spawn_ego_vehicle(
+    world: carla.World,
+    blueprint: str = "vehicle.tesla.model3",
+    autopilot: bool = False,
+    choose_spawn_point: Optional[
+        Callable[[List[carla.Transform]], carla.Transform]
+    ] = None,
+) -> carla.Vehicle:
+    ego_bp = world.get_blueprint_library().find(blueprint)
     ego_bp.set_attribute("role_name", "ego")
-    # print("\nEgo role_name is set")
-    ego_color = random.choice(ego_bp.get_attribute("color").recommended_values)
+    ego_color = ego_bp.get_attribute("color").recommended_values[0]
     ego_bp.set_attribute("color", ego_color)
-    # print("\nEgo color is set")
 
     spawn_points = world.get_map().get_spawn_points()
     number_of_spawn_points = len(spawn_points)
 
-    if 0 < number_of_spawn_points:
-        random.shuffle(spawn_points)
-        ego_transform = spawn_points[0]
+    if number_of_spawn_points > 0:
+        ego_transform = (
+            choose_spawn_point(spawn_points)
+            if choose_spawn_point
+            else random.choice(spawn_points)
+        )
         ego_vehicle = cast(carla.Vehicle, world.spawn_actor(ego_bp, ego_transform))
-        print("\nEgo is spawned")
     else:
         raise Exception("Could not find any spawn points")
+
+    if autopilot:
+        # Sleep before setting autopilot is important because of timing issues.
+        time.sleep(1)
+        world.tick()
+        time.sleep(3)
+        ego_vehicle.set_autopilot(True)
+        print("Autopilot set")
 
     # --------------
     # Spectator on ego position

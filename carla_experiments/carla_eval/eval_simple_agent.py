@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from carla_experiments.carla_utils.setup import game_loop, initialize_carla
+from carla_experiments.carla_utils.setup import game_loop_environment, initialize_carla
 from carla_experiments.carla_utils.spawn import spawn_ego_vehicle, spawn_sensor
 from carla_experiments.carla_utils.types_carla_utils import SensorBlueprintCollection
 from carla_experiments.datasets.simple_dataset import get_simple_val_test_transforms
@@ -132,7 +132,7 @@ def main():
     print("Carla initialized")
     actors = initialize_actors(world)
     tasks = [follow_camera_task, check_stop_time_task]
-    game_loop(world, tasks, actors)
+    game_loop_environment(world, tasks, actors)
 
 
 if __name__ == "__main__":
