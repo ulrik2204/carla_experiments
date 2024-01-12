@@ -1,0 +1,12 @@
+Norsk
+Kommersielle produkter, som Openpilot av comma.ai, er forskningsmessig interessante siden de kan sees på som er verifisering av "state-of-the-art" og kan introdusere nye problemstillinger og muligheter forskningsmessig. Samtidig kan det være vanskelig å forske på dem på grunn av begrenset åpenhet og ulike perspektiver. 
+
+Denne oppgaven vil utforske og gjenskape deler av Openpilot systemet og finne ut om det kan egne seg for videre forskning. Oppgaven vil eventuelt utvikle et system som kan gjøre metodene brukt i Openpilot mer aktuelle for forskning. Oppgaven vil fokusere på å gjenskape datasettet brukt for å trene Openpilot ved å bruke CARLA Simulatoren. Deretter vil oppgaven utforske effekten av ulike input og output i Openpilot systemet og hvordan disse påvirker ytelsen til en modell for autonom kjøring. I tillegg  
+
+English
+The effect of different inputs and outputs used in the Openpilot system on autonomous driving model performance
+Title: Analyzing the Impact of Different Inputs and Outputs in the Openpilot System on the Performance of Autonomous Driving Models
+
+Commercial autonomous driving products, like Openpilot by comma.ai, are interesting from a research standpoint because they can be seen as a verification of the state-of-the-art and can introduce new problems and opportunities for research. At the same time these systems might be hard to research because of limited access to their system code and the different target audiences of research and commercial products. 
+
+This thesis will explore and recreate parts of the Openpilot system to explore whether the Openpilot methods are suitable for research. As part of this thesis, a system may be developed to make some of the Openpilot methods more applicable for research purposes. The thesis will focus on recreating the dataset used to train Openpilot by using the CARLA Simulator. Using this dataset the thesis will explore the effects of the different inputs and outputs used in the Openpilot system and how these affect the performance of an autonomous driving model. 
