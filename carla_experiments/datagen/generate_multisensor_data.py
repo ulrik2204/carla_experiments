@@ -1,16 +1,19 @@
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from queue import Queue
 from typing import TypedDict
 
 import carla
 
+from carla_experiments.carla_utils.constants import SensorBlueprints
 from carla_experiments.carla_utils.setup import (
-    CarlaSimulationEnvironment,
-    game_loop_environment,
-    initialize_carla_with_vehicle_and_sensors,
+    CarlaContext,
+    game_loop,
+    setup_carla_client,
+    setup_sensors,
 )
-from carla_experiments.carla_utils.types_carla_utils import SensorBlueprintCollection
+from carla_experiments.carla_utils.spawn import spawn_ego_vehicle
 
 
 class AppActorsMap(TypedDict):
@@ -23,44 +26,41 @@ class AppSensorMap(TypedDict):
     lidar: carla.Sensor
 
 
-class AppSensorsDataMap(TypedDict):
+class AppSensorDataMap(TypedDict):
     front_camera: carla.Image
     back_camera: carla.Image
     lidar: carla.LidarMeasurement
 
 
 @dataclass
-class AppSimulationEnvironment(
-    CarlaSimulationEnvironment[AppActorsMap, AppSensorMap, AppSensorsDataMap]
-):
+class AppContext(CarlaContext[AppSensorMap, AppActorsMap]):
     folder_base_path: Path
     images_base_path: Path
     controls_base_path: Path
 
 
-def save_image_task(environment: AppSimulationEnvironment) -> None:
-    sensor_data = environment.get_sensor_data()
-    front_image = sensor_data["front_camera"]
-    back_image = sensor_data["back_camera"]
-    lidar_point_cloud = sensor_data["lidar"]
+def save_image_task(context: AppContext, sensor_data_map: AppSensorDataMap) -> None:
+    front_image = sensor_data_map["front_camera"]
+    back_image = sensor_data_map["back_camera"]
+    lidar_point_cloud = sensor_data_map["lidar"]
     print("Front image, frame: ", front_image, front_image.frame)
     print("Back image, frame: ", back_image, back_image.frame)
     print("Lidar point cloud, frame: ", lidar_point_cloud, lidar_point_cloud.frame)
     front_image.save_to_disk(
-        f"{environment.images_base_path.as_posix()}/font_{front_image.frame:06d}.jpg"
+        f"{context.images_base_path.as_posix()}/font_{front_image.frame:06d}.jpg"
     )
     back_image.save_to_disk(
-        f"{environment.images_base_path.as_posix()}/back_{back_image.frame:06d}.jpg"
+        f"{context.images_base_path.as_posix()}/back_{back_image.frame:06d}.jpg"
     )
     lidar_point_cloud.save_to_disk(
-        f"{environment.images_base_path.as_posix()}/lidar_{back_image.frame:06d}.ply"
+        f"{context.images_base_path.as_posix()}/lidar_{back_image.frame:06d}.ply"
     )
 
 
-def spectator_follow_ego_vehicle_task(environment: AppSimulationEnvironment) -> None:
-    ego_vehicle = environment.ego_vehicle
+def spectator_follow_ego_vehicle_task(context: AppContext, _: AppSensorDataMap) -> None:
+    ego_vehicle = context.ego_vehicle
     vehicle_transform = ego_vehicle.get_transform()
-    spectator = environment.world.get_spectator()
+    spectator = context.client.get_world().get_spectator()
     spectator_transform = spectator.get_transform()
     spectator_transform.location = vehicle_transform.location + carla.Location(z=2)
     spectator_transform.rotation.yaw = vehicle_transform.rotation.yaw
@@ -77,41 +77,52 @@ def main():
     images_base_path = folder_base_path / "images"
     images_base_path.mkdir(parents=True, exist_ok=True)
 
-    environment = initialize_carla_with_vehicle_and_sensors(
-        map="Town04",
+    client = setup_carla_client("Town04")
+    world = client.get_world()
+    ego_vehicle = spawn_ego_vehicle(
+        world, autopilot=True, choose_spawn_point=lambda spawn_points: spawn_points[0]
+    )
+    sensor_data_queue = Queue()
+    sensor_map = setup_sensors(
+        world,
+        ego_vehicle,
+        sensor_data_queue=sensor_data_queue,
         sensor_config={
             "front_camera": {
-                "blueprint": SensorBlueprintCollection.CAMERA_RGB,
+                "blueprint": SensorBlueprints.CAMERA_RGB,
                 "location": (2, 0, 1),
                 "rotation": (0, 0, 0),
                 "attributes": {},
             },
             "back_camera": {
-                "blueprint": SensorBlueprintCollection.CAMERA_RGB,
+                "blueprint": SensorBlueprints.CAMERA_RGB,
                 "location": (-5, 0, 1),
                 "rotation": (0, 180, 0),
                 "attributes": {},
             },
             "lidar": {
-                "blueprint": SensorBlueprintCollection.LIDAR_RANGE,
+                "blueprint": SensorBlueprints.LIDAR_RANGE,
                 "location": (0, 0, 2),
                 "rotation": (0, 0, 0),
                 "attributes": {},
             },
         },
-        ego_vehicle_spawn_point=lambda spawn_points: spawn_points[0],
     )
-    # print("Environment: ", environment)
-    app_env = AppSimulationEnvironment(
-        **environment.__dict__,
+
+    context = AppContext(
+        client=client,
+        sensor_map=sensor_map,
+        sensor_data_queue=sensor_data_queue,
+        actor_map={},
+        ego_vehicle=ego_vehicle,
         folder_base_path=folder_base_path,
         images_base_path=images_base_path,
         controls_base_path=controls_base_path,
     )
-    print("App env: ", app_env)
+    print("App env: ", context)
     # TODO: How to handle config variables from the command line like save folder?
     # Should it be part of the CarlaSimulationEnvironment object?
-    game_loop_environment(app_env, [spectator_follow_ego_vehicle_task, save_image_task])
+    game_loop(context, [spectator_follow_ego_vehicle_task, save_image_task])
 
 
 if __name__ == "__main__":

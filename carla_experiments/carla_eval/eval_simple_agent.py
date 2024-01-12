@@ -9,7 +9,7 @@ from PIL import Image
 
 from carla_experiments.carla_utils.setup import game_loop_environment, initialize_carla
 from carla_experiments.carla_utils.spawn import spawn_ego_vehicle, spawn_sensor
-from carla_experiments.carla_utils.types_carla_utils import SensorBlueprintCollection
+from carla_experiments.carla_utils.types_carla_utils import SensorBlueprints
 from carla_experiments.datasets.simple_dataset import get_simple_val_test_transforms
 from carla_experiments.models.simple import SimpleLineFollowingB0
 from carla_experiments.train.training_utils import load_state_dict
@@ -105,7 +105,7 @@ def setup_camera(world: carla.World, ego_vehicle: carla.Vehicle) -> carla.Sensor
 
     rgb_cam = spawn_sensor(
         world,
-        SensorBlueprintCollection.CAMERA_RGB,
+        SensorBlueprints.CAMERA_RGB,
         location=(2, 0, 1),
         rotation=(0, 0, 0),
         attach_to=ego_vehicle,

@@ -8,8 +8,8 @@ from typing import List, TypeVar
 
 import carla
 
+from carla_experiments.carla_utils.constants import SensorBlueprints
 from carla_experiments.carla_utils.spawn import spawn_ego_vehicle, spawn_sensor
-from carla_experiments.carla_utils.types_carla_utils import SensorBlueprintCollection
 
 TSensorData = TypeVar("TSensorData")
 
@@ -59,7 +59,7 @@ def main():
 
     rgb_cam = spawn_sensor(
         world,
-        SensorBlueprintCollection.CAMERA_RGB,
+        SensorBlueprints.CAMERA_RGB,
         location=(2, 0, 1),
         rotation=(0, 0, 0),
         attach_to=ego_vehicle,

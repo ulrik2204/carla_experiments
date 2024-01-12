@@ -6,7 +6,7 @@ import carla
 
 from carla_experiments.carla_utils.types_carla_utils import SensorBlueprint
 
-TSensorData = TypeVar("TSensorData")
+TSensorData = TypeVar("TSensorData", bound=carla.SensorData)
 
 
 def spawn_sensor(
