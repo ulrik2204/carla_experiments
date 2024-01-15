@@ -26,8 +26,6 @@ class SensorBlueprints(Constant, Generic[TSensorData]):
         "sensor.other.lane_invasion", carla.LaneInvasionEvent
     )
     OBSTACLE = SensorBlueprint("sensor.other.obstacle", carla.ObstacleDetectionEvent)
-    SPEEDOMETER = SensorBlueprint("sensor.speedometer", float)
-    OPENDRIVE_MAP = SensorBlueprint("sensor.opendrive_map", str)
 
 
 class AttributeDefaults(Constant):

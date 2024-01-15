@@ -56,6 +56,7 @@ class CarlaContext(ABC, Generic[TSensorsMap, TActorMap]):
     """A keyword only dataclass that should be inherited from"""
 
     client: carla.Client
+    # map: carla.Map  Do I need this to enable Opendrive navigation?
     ego_vehicle: carla.Vehicle
     sensor_map: Mapping[str, carla.Sensor]
     sensor_data_queue: Queue

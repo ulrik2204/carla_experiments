@@ -17,3 +17,14 @@ This project uses PyTorch for its ML models. As the PyTorch library can be diffe
 ```bash
 poetry run python -m pip install torch torchvision
 ```
+
+
+## Recreating the Comma 2k19 dataset
+
+Data sources to recreate in CARLA from the Comma 2k19 dataset:
+- CAN messages (includes: RADAR, steering angle, wheel speed)
+- Road-facing camera at 20Hz
+- Raw GNSS
+- IMU (accelerometer and gyroscope data)
+
+

@@ -41,16 +41,6 @@ def _handle_sensor_setup(
 ) -> carla.Sensor:
     sensor_blueprint = sensor_config["blueprint"]
     attributes = sensor_config["attributes"]
-    # TODO: Handle Speedometer and Opendrive Map
-    # if sensor_type.startswith("sensor.opendrive_map"):
-    #     # The HDMap pseudo sensor is created directly here
-    #     sensor = OpenDriveMapReader(vehicle, sensor_config["reading_frequency"])
-    # elif sensor_type.startswith("sensor.speedometer"):
-    #     delta_time = CarlaDataProvider.get_world().get_settings().fixed_delta_seconds
-    #     frame_rate = 1 / delta_time
-    #     sensor = SpeedometerReader(vehicle, frame_rate)
-    # # These are the sensors spawned on the carla world
-    # else:
 
     modify_camera_bp = _create_blueprint_changer(attributes, AttributeDefaults.CAMERA)
     modify_lidar_bp = _create_blueprint_changer(attributes, AttributeDefaults.LIDAR)
@@ -74,8 +64,6 @@ def _handle_sensor_setup(
         SensorBlueprints.LIDAR_RANGE: modify_lidar_bp,
         SensorBlueprints.LIDAR_SEMANTIC_SEGMENTATION: modify_lidar_bp,
         SensorBlueprints.RADAR_RANGE: modify_radar_bp,
-        SensorBlueprints.SPEEDOMETER: None,  # TODO: Implement
-        SensorBlueprints.OPENDRIVE_MAP: None,  # TODO: Implement
     }
     if sensor_blueprint in modify_blueprint_fn_map:
         modify_blueprint_fn = modify_blueprint_fn_map[sensor_blueprint]
