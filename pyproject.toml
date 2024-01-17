@@ -7,7 +7,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "3.8.10"
-carla = "^0.9.14"
+carla = "0.9.15"
 numpy = "1.21.0"
 tqdm = "^4.66.1"
 mypy = "^1.6.0"
