@@ -1,7 +1,7 @@
 from abc import ABC
 from dataclasses import dataclass
 from queue import Queue
-from typing import Any, Generic, Literal, Mapping, Tuple, Type, TypedDict, TypeVar
+from typing import Generic, Literal, Mapping, Tuple, Type, TypedDict, TypeVar
 
 import carla
 
@@ -14,7 +14,6 @@ class Constant:
 TSensorData = TypeVar("TSensorData")
 
 # It is suppsed to have to be a Mapping[str, carla.Actor], but it does not support extensions of carla.Actor
-TActors = TypeVar("TActors", bound=Mapping[str, Any])
 
 
 @dataclass
@@ -27,7 +26,7 @@ class SensorBlueprint(Generic[TSensorData]):
 
 
 TActorMap = TypeVar("TActorMap")
-TSensorsMap = TypeVar("TSensorsMap", bound=Mapping[str, Any])
+TSensorMap = TypeVar("TSensorMap")
 
 
 class SensorConfig(TypedDict, Generic[TSensorData]):
@@ -51,13 +50,13 @@ AvailableMaps = Literal[
 ]
 
 
-@dataclass
-class CarlaContext(ABC, Generic[TSensorsMap, TActorMap]):
+@dataclass  # kw_only=True
+class CarlaContext(ABC, Generic[TSensorMap, TActorMap]):
     """A keyword only dataclass that should be inherited from"""
 
     client: carla.Client
     # map: carla.Map  Do I need this to enable Opendrive navigation?
     ego_vehicle: carla.Vehicle
-    sensor_map: Mapping[str, carla.Sensor]
+    sensor_map: TSensorMap
     sensor_data_queue: Queue
-    actor_map: Mapping[str, carla.Actor]
+    actor_map: TActorMap

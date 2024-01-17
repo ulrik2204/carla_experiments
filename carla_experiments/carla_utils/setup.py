@@ -1,7 +1,7 @@
 import sys
 import time
 from queue import Empty, Queue
-from typing import Any, Callable, Dict, List, Mapping, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Mapping, Optional, Type, TypeVar, cast
 
 import carla
 
@@ -13,7 +13,7 @@ from carla_experiments.carla_utils.types_carla_utils import (
     SensorConfig,
 )
 
-TSensorsMap = TypeVar("TSensorsMap", bound=Mapping[str, Any])
+TSensorMap = TypeVar("TSensorMap", bound=Mapping[str, Any])
 TSensorDataMap = TypeVar("TSensorDataMap", bound=Mapping[str, Any])
 TActorMap = TypeVar("TActorMap", bound=Mapping[str, Any])
 
@@ -83,10 +83,22 @@ def _handle_sensor_setup(
 
 
 def setup_carla_client(map: str, frame_rate: int = 20):
+    """Creates the CARLA client at given port and
+    sets the world to synchronous mode with given frame rate.
+    Also sets the timeout to 30 seconds.
+
+    Args:
+        map (str): The map to load. E.g. "Town01"
+        frame_rate (int, optional): Frame rate to run the simulation. Defaults to 20.
+
+    Returns:
+        Client: The CARLA client object
+    """
     client = carla.Client("localhost", 2000)
     client.set_timeout(30.0)
     client.load_world(map)
     world = client.get_world()
+    client.get_trafficmanager().set_synchronous_mode(True)
 
     settings = world.get_settings()
     settings.synchronous_mode = True  # Enables synchronous mode
@@ -99,8 +111,9 @@ def setup_sensors(
     world: carla.World,
     ego_vehicle: carla.Vehicle,
     sensor_data_queue: Queue,
+    return_sensor_map_type: Type[TSensorMap],
     sensor_config: Mapping[str, SensorConfig],
-) -> Mapping[str, carla.Sensor]:
+) -> TSensorMap:
     sensor_map: Mapping[str, carla.Sensor] = {}
     for sensor_id, config in sensor_config.items():
         sensor = _handle_sensor_setup(
@@ -109,7 +122,7 @@ def setup_sensors(
         sensor_map[sensor_id] = sensor
     time.sleep(0.1)
     world.tick()
-    return sensor_map
+    return cast(return_sensor_map_type, sensor_map)
 
 
 TContext = TypeVar("TContext", bound=CarlaContext)

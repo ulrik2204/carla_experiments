@@ -32,7 +32,7 @@ class AppSensorDataMap(TypedDict):
     lidar: carla.LidarMeasurement
 
 
-@dataclass
+@dataclass  # kw_only=True
 class AppContext(CarlaContext[AppSensorMap, AppActorsMap]):
     folder_base_path: Path
     images_base_path: Path
@@ -79,14 +79,16 @@ def main():
 
     client = setup_carla_client("Town04")
     world = client.get_world()
+    carla_map = world.get_map()
     ego_vehicle = spawn_ego_vehicle(
-        world, autopilot=True, choose_spawn_point=lambda spawn_points: spawn_points[0]
+        world, autopilot=True, spawn_point=carla_map.get_spawn_points()[0]
     )
     sensor_data_queue = Queue()
     sensor_map = setup_sensors(
         world,
         ego_vehicle,
         sensor_data_queue=sensor_data_queue,
+        return_sensor_map_type=AppSensorMap,
         sensor_config={
             "front_camera": {
                 "blueprint": SensorBlueprints.CAMERA_RGB,
