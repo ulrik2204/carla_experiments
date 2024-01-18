@@ -1,7 +1,7 @@
 import random
 import threading
 import time
-from typing import Callable, List, Optional, Tuple, TypeVar, cast
+from typing import Callable, Iterator, List, Optional, Tuple, TypeVar, cast
 
 import carla
 
@@ -141,15 +141,15 @@ def spawn_ego_vehicle(
     spawn_point: Optional[carla.Transform] = None,
     choose_color: Optional[Callable[[List[str]], str]] = None,
 ) -> carla.Vehicle:
-    # TODO: Fix overlapping spawn points error.
-    # TODO: IndexError for the "color" attribute
     def set_attributes(blueprint: carla.ActorBlueprint) -> carla.ActorBlueprint:
         blueprint.set_attribute("role_name", "hero")
-        # recommended_colors = blueprint.get_attribute("color").recommended_values
-        # vehicle_color = (
-        #     choose_color(recommended_colors) if choose_color else recommended_colors[0]
-        # )
-        # blueprint.set_attribute("color", vehicle_color)
+        if not blueprint.has_attribute("color"):
+            return blueprint
+        recommended_colors = blueprint.get_attribute("color").recommended_values
+        vehicle_color = (
+            choose_color(recommended_colors) if choose_color else recommended_colors[0]
+        )
+        blueprint.set_attribute("color", vehicle_color)
         return blueprint
 
     return spawn_vehicle(
@@ -161,17 +161,33 @@ def spawn_ego_vehicle(
     )
 
 
+def _try_spawn_vehicle_bot(
+    world: carla.World, possible_spawn_points: List[carla.Transform], tries: int = 5
+) -> carla.Vehicle:
+    if tries == 0:
+        raise RuntimeError("Could not spawn vehicle bot")
+    spawn_point = random.choice(possible_spawn_points)
+    try:
+        vehicle = spawn_vehicle(
+            world, spawn_point=spawn_point, autopilot=True, tick=False
+        )
+        print("vehicle spawned")
+        return vehicle
+    except RuntimeError as e:
+        if str(e) == "Spawn failed because of collision at spawn position":
+            print("spawn collision while spawning vehicle, retrying")
+            return _try_spawn_vehicle_bot(world, possible_spawn_points, tries=tries - 1)
+        raise e
+
+
 def spawn_vehicle_bots(
     world: carla.World,
-    number: int,
-    spawn_points: Optional[List[carla.Transform]] = None,
+    number_of_vehicles: int,
 ) -> List[carla.Vehicle]:
     vehicles = []
-    spawn_points = spawn_points or world.get_map().get_spawn_points()
-    for i in range(number):
-        vehicle = spawn_vehicle(
-            world, spawn_point=spawn_points[i], autopilot=True, tick=False
-        )
+    spawn_points = world.get_map().get_spawn_points()
+    for _ in range(number_of_vehicles):
+        vehicle = _try_spawn_vehicle_bot(world, spawn_points)
         vehicles.append(vehicle)
     time.sleep(1)
     world.tick()
@@ -201,12 +217,6 @@ def _walk_towards_goal(
 def _random_walking_behaviour(
     world: carla.World, walker: carla.Walker, controller: carla.WalkerAIController
 ):
-    """
-    Defines the behavior of the walker, continuously moving to new random locations.
-
-    :param controller: carla.WalkerAIController object
-    :param world: carla.World object
-    """
     while True:
         # Choose a random destination
         destination = world.get_random_location_from_navigation()
@@ -229,26 +239,30 @@ def spawn_walker(
     walk_randomly_afterwards: bool = True,
     tick: bool = True,
 ) -> Tuple[carla.Walker, carla.WalkerAIController]:
-    # Get the blueprint library and choose a random pedestrian blueprint
     blueprint_library = world.get_blueprint_library()
     walker_bp = (
-        random.choice(blueprint_library.filter("walker.*"))
+        random.choice(blueprint_library.filter("walker.pedestrian.*"))
         if blueprint is None
         else blueprint_library.find(blueprint)
     )
+    if walker_bp.has_attribute("is_invincible"):
+        walker_bp.set_attribute("is_invincible", "false")
+    if walker_bp.has_attribute("speed"):
+        _, walk, run, *_ = walker_bp.get_attribute("speed").recommended_values
+        speed = random.choices([walk, run], weights=[0.8, 0.2], k=1)[0]
+        walker_bp.set_attribute("speed", speed)
 
     used_spawn_point = spawn_point or random.choice(world.get_map().get_spawn_points())
-    point = carla.Transform(
-        used_spawn_point.location + carla.Location(z=1.5), used_spawn_point.rotation
-    )
-    walker = cast(carla.Walker, world.spawn_actor(walker_bp, point))
+    walker = cast(carla.Walker, world.spawn_actor(walker_bp, used_spawn_point))
+    print("used_spawn_point", _format_location(used_spawn_point.location))
 
     walker_controller_bp = world.get_blueprint_library().find("controller.ai.walker")
     walker_controller = cast(
         carla.WalkerAIController,
         world.spawn_actor(
             walker_controller_bp,
-            walker.get_transform(),
+            # carla.Transform(location=carla.Location(), rotation=carla.Rotation()),
+            used_spawn_point,
             attach_to=walker,
         ),
     )
@@ -270,35 +284,54 @@ def spawn_walker(
         path_thread.start()
 
     elif walk_randomly_afterwards:
-        destination = world.get_random_location_from_navigation()
-        walker_controller.go_to_location(destination)
-        # walk_random_thread = threading.Thread(
-        #     target=_random_walking_behaviour,
-        #     args=(world, walker, walker_controller),
-        #     daemon=True,
-        # )
-        # walk_random_thread.start()
+        # destination = world.get_random_location_from_navigation()
+        # walker_controller.go_to_location(destination)
+        walk_random_thread = threading.Thread(
+            target=_random_walking_behaviour,
+            args=(world, walker, walker_controller),
+            daemon=True,
+        )
+        walk_random_thread.start()
 
     return walker, walker_controller
+
+
+def _format_location(location: carla.Location):
+    return f"Location: ({location.x}, {location.y}, {location.z})"
 
 
 def spawn_walker_bots(
     world: carla.World,
     number_of_pedestrians: int,
-    spawn_points: Optional[List[carla.Transform]] = None,
 ) -> List[Tuple[carla.Walker, carla.WalkerAIController]]:
-    # TODO: Fix overlapping spawn points error.
     walkers = []
-    used_spawn_points = spawn_points or world.get_map().get_spawn_points()
-    for i in range(number_of_pedestrians):
-        # Randomly choose a spawn point
-        spawn_point = used_spawn_points[i]
-
-        # Spawn the pedestrian
-        walker, controller = spawn_walker(world, spawn_point=spawn_point, tick=False)
+    for _ in range(number_of_pedestrians):
+        walker, controller = _try_spawn_walker_bot(world)
         walkers.append((walker, controller))
 
-    time.sleep(1)
-    world.tick()
+    world.get_spectator().set_transform(walkers[0][0].get_transform())
+    for walker, controller in walkers:
+        print("walker location: ", _format_location(walker.get_location()))
 
     return walkers
+
+
+def _try_spawn_walker_bot(
+    world: carla.World, tries: int = 5
+) -> Tuple[carla.Walker, carla.WalkerAIController]:
+    if tries == 0:
+        raise RuntimeError("Could not spawn walker bot, even after retries.")
+    try:
+        random_location = world.get_random_location_from_navigation()
+        print("random_loc", _format_location(random_location))
+        spawn_point = carla.Transform(
+            location=random_location, rotation=carla.Rotation()
+        )
+        walker, controller = spawn_walker(world, spawn_point=spawn_point, tick=True)
+        print("walker spawned")
+        return walker, controller
+    except RuntimeError as e:
+        if str(e) == "Spawn failed because of collision at spawn position":
+            print("spawn collision while spawning walker, retrying")
+            return _try_spawn_walker_bot(world, tries=tries - 1)
+        raise e

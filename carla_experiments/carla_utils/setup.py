@@ -161,9 +161,22 @@ def game_loop(
             if not isinstance(e, KeyboardInterrupt):
                 print(e)
             print("Exiting...")
-            for actor in context.actor_map.values():
-                actor.destroy()
-            for sensor in context.sensor_map.values():
-                sensor.stop()
-                sensor.destroy()
+            stop_actor(context.actor_map)
+            stop_actor(context.sensor_map)
             sys.exit()
+
+
+def stop_actor(actor):
+    if isinstance(actor, carla.Actor):
+        actor.destroy()
+    elif isinstance(actor, carla.Sensor):
+        actor.stop()
+        actor.destroy()
+    elif isinstance(actor, list) or isinstance(actor, tuple):
+        for a in actor:
+            stop_actor(a)
+    elif isinstance(actor, dict):
+        for a in actor.values():
+            stop_actor(a)
+    else:
+        raise ValueError(f"Unsupposed actor map type {type(actor)}")

@@ -116,8 +116,8 @@ def configure_traffic_manager(
     traffic_manager.set_random_device_seed(42)
     traffic_manager.set_global_distance_to_leading_vehicle(2.5)
     traffic_manager.set_respawn_dormant_vehicles(True)
-    traffic_manager.set_hybrid_physics_mode(True)
-    traffic_manager.set_hybrid_physics_radius(70)
+    # traffic_manager.set_hybrid_physics_mode(True)
+    # traffic_manager.set_hybrid_physics_radius(70)
 
     for bot in vehicle_bots:
         traffic_manager.ignore_lights_percentage(bot, 5)
@@ -152,12 +152,14 @@ def main():
         other_data_base_path,
     ) = create_folders_if_not_exists()
 
-    client = setup_carla_client("Town10HD")
+    client = setup_carla_client("Town04")
+    # client = setup_carla_client("Town10HD")
     world = client.get_world()
     carla_map = world.get_map()
     ego_vehicle = spawn_ego_vehicle(
         world, autopilot=True, spawn_point=carla_map.get_spawn_points()[0]
     )
+    world.set_pedestrians_cross_factor(0.1)
     sensor_data_queue = Queue()
     # TODO: Check sensor positions
     sensor_map = setup_sensors(
@@ -193,16 +195,10 @@ def main():
         },
     )
     print("spawning vehicles")
-    random.seed(42)
-    spawn_point_selection = random.sample(carla_map.get_spawn_points(), 25)
-    vehicle_bots = spawn_vehicle_bots(
-        world, 10, spawn_points=spawn_point_selection[0:10]
-    )
+    vehicle_bots = spawn_vehicle_bots(world, 10)
     print("spawning bots")
-    walker_bots = spawn_walker_bots(
-        world, 15, spawn_points=spawn_point_selection[10:26]
-    )
-
+    # TODO: Spawning walkers is not working, check generate_traffic example
+    walker_bots = spawn_walker_bots(world, 15)
     print("configuring traffic manager")
     traffic_manager = client.get_trafficmanager()
     configure_traffic_manager(traffic_manager, ego_vehicle, vehicle_bots)
@@ -220,8 +216,6 @@ def main():
         radar_base_path=radar_base_path,
         other_data_base_path=other_data_base_path,
     )
-    spectator = context.client.get_world().get_spectator()
-    spectator.set_transform(spawn_point_selection[11])
     print("App env: ", context)
     print("Starting game loop")
     game_loop(
