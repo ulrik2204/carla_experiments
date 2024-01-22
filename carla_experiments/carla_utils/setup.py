@@ -148,7 +148,9 @@ def _get_sensor_data_map(env: CarlaContext, queue_timeout: float = 10):
 
 
 def game_loop(
-    context: TContext, tasks: List[Callable[[TContext, TSensorDataMap], None]]
+    context: TContext,
+    tasks: List[Callable[[TContext, TSensorDataMap], None]],
+    on_exit: Optional[Callable[[TContext], None]] = None,
 ):
     while True:
         try:  # in case of a crash, try to recover and continue
@@ -160,6 +162,8 @@ def game_loop(
         except (KeyboardInterrupt, Exception) as e:
             if not isinstance(e, KeyboardInterrupt):
                 print(e)
+            if on_exit is not None:
+                on_exit(context)
             print("Exiting...")
             stop_actor(context.actor_map)
             stop_actor(context.sensor_map)

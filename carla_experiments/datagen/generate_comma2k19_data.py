@@ -1,22 +1,18 @@
 import json
+import os
 import random
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from queue import Queue
-from typing import List, Tuple, TypedDict
+from tabnanny import check
+from typing import List, NamedTuple, Optional, Tuple, TypedDict, Union
 
 import carla
 import numpy as np
 
 from carla_experiments.carla_utils.constants import SensorBlueprints
-from carla_experiments.carla_utils.measurements import (
-    calculate_vehicle_speed,
-    parse_gnss_data,
-    parse_imu_data,
-    parse_radar_data,
-    parse_waypoint,
-)
 from carla_experiments.carla_utils.setup import (
     CarlaContext,
     game_loop,
@@ -28,6 +24,7 @@ from carla_experiments.carla_utils.spawn import (
     spawn_vehicle_bots,
     spawn_walker_bots,
 )
+from carla_experiments.datagen.utils import euler_to_quaternion, frames_to_video
 
 
 class AppActorMap(TypedDict):
@@ -38,29 +35,41 @@ class AppActorMap(TypedDict):
 
 class AppSensorMap(TypedDict):
     front_camera: carla.Sensor
-    radar: carla.Sensor
-    gnss: carla.Sensor
-    imu: carla.Sensor
+    # radar: carla.Sensor
+    # gnss: carla.Sensor
+    # imu: carla.Sensor
 
 
 class AppSensorDataMap(TypedDict):
     front_camera: carla.Image
-    radar: carla.RadarMeasurement
-    gnss: carla.GnssMeasurement
-    imu: carla.IMUMeasurement
+    # radar: carla.RadarMeasurement
+    # gnss: carla.GnssMeasurement
+    # imu: carla.IMUMeasurement
 
 
 @dataclass
 class AppContext(CarlaContext[AppSensorMap, AppActorMap]):
+    frame_rate: int
     folder_base_path: Path
-    images_base_path: Path
-    radar_base_path: Path
-    other_data_base_path: Path
+    images_intermediary_folder: Path
+    global_pose_path: Path
+    locations_intermediary_folder: Path
+    rotations_intermediary_folder: Path
+    delete_intermediary_files: bool
 
 
 def _save_dict_as_json(data: dict, path: Path):
     with path.open("w") as file:
         json.dump(data, file)
+
+
+MAX_TIME = 60 * 2  # 2 minutes
+start_time = time.time()
+
+
+def check_time_elapsed_task(context: AppContext, _: AppSensorDataMap):
+    if time.time() - start_time > MAX_TIME:
+        raise KeyboardInterrupt()
 
 
 def update_vehicle_lights_task(context: AppContext, _: AppSensorDataMap) -> None:
@@ -71,34 +80,34 @@ def update_vehicle_lights_task(context: AppContext, _: AppSensorDataMap) -> None
 
 
 def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap) -> None:
-    return
     front_image = sensor_data_map["front_camera"]
-    radar_data = parse_radar_data(sensor_data_map["radar"])
-    imu_data = parse_imu_data(sensor_data_map["imu"])
-    gnss_data = parse_gnss_data(sensor_data_map["gnss"])
-    steering_angle = context.ego_vehicle.get_control().steer
-    speed = calculate_vehicle_speed(context.ego_vehicle)
+    # radar_data = parse_radar_data(sensor_data_map["radar"])
+    # imu_data = parse_imu_data(sensor_data_map["imu"])
+    # gnss_data = parse_gnss_data(sensor_data_map["gnss"])
+    # speed = calculate_vehicle_speed(context.ego_vehicle)
     frame = front_image.frame
+    # front_image.timestamp  # TODO: use this for frame times?
     ego_vehicle = context.ego_vehicle
-    waypoint = (
-        context.client.get_world().get_map().get_waypoint(ego_vehicle.get_location())
+    vehicle_transform = ego_vehicle.get_transform()
+    location = vehicle_transform.location
+    location_np = np.array([location.x, location.y, location.z])
+    roatation_np = euler_to_quaternion(vehicle_transform.rotation)
+    # waypoint = (
+    #     context.client.get_world().get_map().get_waypoint(ego_vehicle.get_location())
+    # )
+    front_image.save_to_disk(
+        f"{context.images_intermediary_folder.as_posix()}/{frame:06d}.jpg"
     )
-    other_data_dict = {
-        "imu": imu_data,
-        "gnss": gnss_data,
-        "speed": speed,
-        "steering_angle": steering_angle,
-        "waypoint": parse_waypoint(waypoint),
-    }
-    front_image.save_to_disk(f"{context.images_base_path.as_posix()}/{frame:06d}.jpg")
-    np.save(f"{context.radar_base_path.as_posix()}/{frame:06d}.npy", radar_data)
-    _save_dict_as_json(
-        other_data_dict, context.other_data_base_path / f"{frame:06d}.json"
+    # np.save(f"{context.radar_base_path.as_posix()}/{frame:06d}.npy", radar_data)
+    np.save(
+        f"{context.global_pose_path.as_posix()}/location/{frame:06d}.npy", location_np
+    )
+    np.save(
+        f"{context.global_pose_path.as_posix()}/rotation/{frame:06d}.npy", roatation_np
     )
 
 
 def spectator_follow_ego_vehicle_task(context: AppContext, _: AppSensorDataMap) -> None:
-    return
     ego_vehicle = context.ego_vehicle
     vehicle_transform = ego_vehicle.get_transform()
     spectator = context.client.get_world().get_spectator()
@@ -130,29 +139,106 @@ def configure_traffic_manager(
         traffic_manager.random_right_lanechange_percentage(bot, random.randint(0, 60))
 
 
-def create_folders_if_not_exists():
+class Folders(NamedTuple):
+    folder_base_path: Path
+    images_intermediary_folder: Path
+    global_pose_path: Path
+    location_intermediary_folder: Path
+    rotation_intermediary_folder: Path
+
+
+def create_folders_if_not_exists(
+    base_path: Optional[Path] = None,
+) -> Folders:
     timestamp_string = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    folder_base_path = Path(f"output/{timestamp_string}")
+    folder_base_path = base_path or Path(f"output/{timestamp_string}")
     folder_base_path.mkdir(parents=True, exist_ok=True)
-    images_base_path = folder_base_path / "images"
-    images_base_path.mkdir(parents=True, exist_ok=True)
-    radar_base_path = folder_base_path / "radar"
-    radar_base_path.mkdir(parents=True, exist_ok=True)
-    other_data_base_path = folder_base_path / "other"
-    other_data_base_path.mkdir(parents=True, exist_ok=True)
-    return folder_base_path, images_base_path, radar_base_path, other_data_base_path
+    images_intermediary_folder = folder_base_path / "images"
+    images_intermediary_folder.mkdir(parents=True, exist_ok=True)
+    global_pose_path = folder_base_path / "global_pose"
+    global_pose_path.mkdir(parents=True, exist_ok=True)
+    location_intermediary_folder = global_pose_path / "location"
+    location_intermediary_folder.mkdir(parents=True, exist_ok=True)
+    rotation_intermediary_folder = global_pose_path / "rotation"
+    rotation_intermediary_folder.mkdir(parents=True, exist_ok=True)
+    return Folders(
+        folder_base_path,
+        images_intermediary_folder,
+        global_pose_path,
+        location_intermediary_folder,
+        rotation_intermediary_folder,
+    )
+
+
+def concatenate_array_files(folder_path: Path, output_file_path: Path):
+    """
+    Concatenates numpy arrays from files in a given folder and saves the result.
+
+    Args:
+    folder_path (str): The path to the folder containing the files.
+    output_file (str): The path of the output file to save the concatenated array.
+    """
+    # Get all file names in the folder
+    files = [f for f in folder_path.iterdir() if f.is_file()]
+
+    # Sort files based on frame number
+    files.sort(key=lambda f: int(os.path.splitext(f.name)[0]))
+
+    # Load and concatenate arrays
+    arrays = []
+    for file in files:
+        arrays.append(np.load(file))
+
+    concatenated_array = np.concatenate(arrays, axis=0)
+
+    # Save the concatenated array
+    print("Saving concatenated array to: ", output_file_path)
+    with_npy = output_file_path.with_suffix(".npy")
+    np.save(with_npy, concatenated_array)
+    with_npy.rename(output_file_path)
+
+
+def on_exit(context: AppContext) -> None:
+    # This function will take all the images and create a hevc video
+    frames_to_video(
+        context.images_intermediary_folder,
+        context.folder_base_path / "video.hevc",
+        context.frame_rate,
+        delete_intermediate_mp4_file=False,  # TODO: Remove
+    )
+    # This function will also take all the global poses and concatenate into a single file
+    concatenate_array_files(
+        context.locations_intermediary_folder,
+        context.global_pose_path / "frame_locations",
+    )
+    concatenate_array_files(
+        context.rotations_intermediary_folder,
+        context.global_pose_path / "frame_orientations",
+    )
+
+    if context.delete_intermediary_files:
+        for file in context.locations_intermediary_folder.iterdir():
+            file.unlink()
+        for file in context.rotations_intermediary_folder.iterdir():
+            file.unlink()
+        for file in context.images_intermediary_folder.iterdir():
+            file.unlink()
+        context.locations_intermediary_folder.rmdir()
+        context.rotations_intermediary_folder.rmdir()
 
 
 def main():
     # save_folder,
     (
         folder_base_path,
-        images_base_path,
-        radar_base_path,
-        other_data_base_path,
+        images_intermediary_folder,
+        global_pose_path,
+        location_intermediary_folder,
+        rotation_intermediary_folder,
     ) = create_folders_if_not_exists()
+    frame_rate = 20
 
-    client = setup_carla_client("Town04")
+    client = setup_carla_client("Town04", frame_rate=frame_rate)
     # client = setup_carla_client("Town10HD")
     world = client.get_world()
     carla_map = world.get_map()
@@ -170,24 +256,6 @@ def main():
         sensor_config={
             "front_camera": {
                 "blueprint": SensorBlueprints.CAMERA_RGB,
-                "location": (2, 0, 1),
-                "rotation": (0, 0, 0),
-                "attributes": {},
-            },
-            "radar": {
-                "blueprint": SensorBlueprints.RADAR_RANGE,
-                "location": (2, 0, 1),
-                "rotation": (0, 0, 0),
-                "attributes": {},
-            },
-            "gnss": {
-                "blueprint": SensorBlueprints.GNSS,
-                "location": (2, 0, 1),
-                "rotation": (0, 0, 0),
-                "attributes": {},
-            },
-            "imu": {
-                "blueprint": SensorBlueprints.IMU,
                 "location": (2, 0, 1),
                 "rotation": (0, 0, 0),
                 "attributes": {},
@@ -211,16 +279,25 @@ def main():
         sensor_data_queue=sensor_data_queue,
         actor_map={"vehicles": vehicle_bots, "walkers": walker_bots},
         ego_vehicle=ego_vehicle,
+        frame_rate=frame_rate,
         folder_base_path=folder_base_path,
-        images_base_path=images_base_path,
-        radar_base_path=radar_base_path,
-        other_data_base_path=other_data_base_path,
+        images_intermediary_folder=images_intermediary_folder,
+        global_pose_path=global_pose_path,
+        locations_intermediary_folder=location_intermediary_folder,
+        rotations_intermediary_folder=rotation_intermediary_folder,
+        delete_intermediary_files=True,
     )
     print("App env: ", context)
     print("Starting game loop")
     game_loop(
         context,
-        [spectator_follow_ego_vehicle_task, save_data_task, update_vehicle_lights_task],
+        [
+            spectator_follow_ego_vehicle_task,
+            save_data_task,
+            update_vehicle_lights_task,
+            check_time_elapsed_task,
+        ],
+        on_exit=on_exit,
     )
 
 

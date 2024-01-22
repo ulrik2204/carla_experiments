@@ -30,8 +30,8 @@ class SensorBlueprints(Constant, Generic[TSensorData]):
 
 class AttributeDefaults(Constant):
     CAMERA = {
-        "image_size_x": "1280",
-        "image_size_y": "720",
+        "image_size_x": "512",
+        "image_size_y": "256",
         "fov": "105",
         "lens_circle_multiplier": "3.0",
         "lens_circle_falloff": "3.0",

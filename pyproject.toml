@@ -20,6 +20,7 @@ torchmetrics = "^1.2.1"
 matplotlib = "3.6"
 pandas = "1.4.3"
 opencv-python = "^4.9.0.80"
+ffmpeg-python = "^0.2.0"
 
 
 [tool.poetry.group.dev.dependencies]
