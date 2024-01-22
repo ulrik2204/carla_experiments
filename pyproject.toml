@@ -19,6 +19,7 @@ wandb = "^0.16.0"
 torchmetrics = "^1.2.1"
 matplotlib = "3.6"
 pandas = "1.4.3"
+opencv-python = "^4.9.0.80"
 
 
 [tool.poetry.group.dev.dependencies]
