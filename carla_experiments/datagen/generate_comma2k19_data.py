@@ -95,6 +95,7 @@ def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap) -> No
     # waypoint = (
     #     context.client.get_world().get_map().get_waypoint(ego_vehicle.get_location())
     # )
+    # TODO: Append images to an array instead of saving them to disk
     front_image.save_to_disk(
         f"{context.images_intermediary_folder.as_posix()}/{frame:06d}.jpg"
     )
@@ -204,7 +205,6 @@ def on_exit(context: AppContext) -> None:
         context.images_intermediary_folder,
         context.folder_base_path / "video.hevc",
         context.frame_rate,
-        delete_intermediate_mp4_file=False,  # TODO: Remove
     )
     # This function will also take all the global poses and concatenate into a single file
     concatenate_array_files(
@@ -225,6 +225,7 @@ def on_exit(context: AppContext) -> None:
             file.unlink()
         context.locations_intermediary_folder.rmdir()
         context.rotations_intermediary_folder.rmdir()
+        context.images_intermediary_folder.rmdir()
 
 
 def main():
