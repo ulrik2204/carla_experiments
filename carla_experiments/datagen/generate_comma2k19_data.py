@@ -190,6 +190,7 @@ def concatenate_array_files(folder_path: Path, output_file_path: Path):
 
 def on_exit(context: AppContext) -> None:
     # This function will take all the images and create a hevc video
+    print("Segment done, collecting files...")
     frames_to_video(
         context.images_intermediary_folder,
         context.folder_base_path / "video.hevc",
@@ -217,7 +218,7 @@ def on_exit(context: AppContext) -> None:
         context.images_intermediary_folder.rmdir()
 
 
-@segment(frame_duration=20 * 60 * 2)  # 2 minutes (20 fps, 60s/min, 2 min)
+@segment(frame_duration=20 * 30)  # 30 minutes (20 fps, 30s)
 def stroll_segment(context: AppContext) -> SegmentResult:
     spawn_point = context.map.get_spawn_points()[1]
     context.ego_vehicle.set_transform(spawn_point)

@@ -186,6 +186,7 @@ def game_loop(
             stop_actor(context.sensor_map)
             if not is_stop_segment or is_keyboard_interrupt:
                 sys.exit()
+            break
 
 
 def stop_actor(actor):
@@ -214,6 +215,18 @@ def create_dataset(batches: List[DecoratedBatch[TSettings]], settings: TSettings
 
 
 def batch(func: Batch[TSettings]) -> DecoratedBatch[TSettings]:
+    """Decorator for a batch function. A batch function is a function that
+    sets up a CARLA client and world, spawns an ego vehicle, and sets up sensors.
+    All segments in a batch share the same context created by the batch.
+
+    Args:
+        func (Batch[TSettings]): The batch function to decorate.
+
+    Returns:
+        DecoratedBatch[TSettings]: The decorated batch function to be used
+            when calling the "create_dataset" function.
+    """
+
     # This is a function to also be able to group the data generation into batches
     # Each batch is a collection of segments with certain world settings.
     @wraps(func)
@@ -227,7 +240,24 @@ def batch(func: Batch[TSettings]) -> DecoratedBatch[TSettings]:
     return inner
 
 
-def segment(frame_duration: int):
+def segment(
+    frame_duration: int,
+) -> Callable[[Segment[TContext, TSensorDataMap]], DecoratedSegment[TContext]]:  # type: ignore
+    """Decorator for a segment function. A segment function is a function that
+    creates a small segment of data, e.g. 60 seconds of driving. It is provided the
+    context by the batch, but the only thing it should change should be the things
+    like position of the ego vehicle, the weather or spawn actors. A segment should
+    not change the map or the world settings.
+
+    Args:
+        frame_duration (int): The number of frames to run the segment for.
+        This will be dependent on the frame rate.
+
+
+    Returns:
+        Callable[[Segment[TContext, TSensorDataMap]], DecoratedSegment[TContext]]: The decorator.
+    """
+
     # This function is used to be able to group the data generation into segments
     # Each segment is a snippet of any frame length. It is provided the client
     # by the batch, but can itself also change the world settings, like the map
