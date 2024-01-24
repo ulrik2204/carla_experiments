@@ -1,7 +1,20 @@
 from abc import ABC
 from dataclasses import dataclass
 from queue import Queue
-from typing import Generic, Literal, Mapping, Tuple, Type, TypedDict, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    List,
+    Literal,
+    Mapping,
+    Optional,
+    Protocol,
+    Tuple,
+    Type,
+    TypedDict,
+    TypeVar,
+)
 
 import carla
 
@@ -51,12 +64,56 @@ AvailableMaps = Literal[
 
 
 @dataclass  # kw_only=True
-class CarlaContext(ABC, Generic[TSensorMap, TActorMap]):
+class BatchContext(ABC, Generic[TSensorMap, TActorMap]):
     """A keyword only dataclass that should be inherited from"""
 
     client: carla.Client
-    # map: carla.Map  Do I need this to enable Opendrive navigation?
+    map: carla.Map
     ego_vehicle: carla.Vehicle
     sensor_map: TSensorMap
     sensor_data_queue: Queue
     actor_map: TActorMap
+
+
+TContext = TypeVar("TContext", bound=BatchContext)
+TSensorDataMap = TypeVar("TSensorDataMap", bound=Mapping[str, Any])
+TActorMap = TypeVar("TActorMap", bound=Mapping[str, Any])
+
+
+class SegmentResult(TypedDict, Generic[TContext, TSensorDataMap]):
+    tasks: List[Callable[[TContext, TSensorDataMap], None]]
+    on_exit: Optional[Callable[[TContext], None]]
+
+
+class Segment(Protocol, Generic[TContext, TSensorDataMap]):
+    def __call__(self, context: TContext) -> SegmentResult[TContext, TSensorDataMap]:
+        ...
+
+
+TContextContra = TypeVar("TContextContra", bound=BatchContext, contravariant=True)
+
+TSettings = TypeVar("TSettings")
+
+
+class DecoratedSegment(Protocol, Generic[TContextContra]):
+    def __call__(self, context: TContextContra) -> None:
+        ...
+
+
+class BatchResult(TypedDict, Generic[TContext]):
+    context: TContext
+    segments: List[DecoratedSegment[TContext]]
+    on_exit: Optional[Callable[[TContext], None]]
+
+
+TSettingsContra = TypeVar("TSettingsContra", contravariant=True)
+
+
+class Batch(Protocol, Generic[TSettingsContra]):
+    def __call__(self, settings: TSettingsContra) -> BatchResult:
+        ...
+
+
+class DecoratedBatch(Protocol, Generic[TSettingsContra]):
+    def __call__(self, settings: TSettingsContra) -> None:
+        ...

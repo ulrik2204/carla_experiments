@@ -15,7 +15,7 @@ from carla_experiments.carla_utils.setup import (
     setup_sensors,
 )
 from carla_experiments.carla_utils.spawn import spawn_ego_vehicle
-from carla_experiments.carla_utils.types_carla_utils import CarlaContext
+from carla_experiments.carla_utils.types_carla_utils import BatchContext
 
 
 class SimpleActorMap(TypedDict):
@@ -31,7 +31,7 @@ class SimpleSensorDataMap(TypedDict):
 
 
 @dataclass
-class SimpleContext(CarlaContext[SimpleSensorMap, SimpleActorMap]):
+class SimpleContext(BatchContext[SimpleSensorMap, SimpleActorMap]):
     folder_base_path: Path
     images_base_path: Path
     controls_base_path: Path
@@ -90,6 +90,7 @@ def main():
         world,
         ego_vehicle,
         sensor_data_queue,
+        return_sensor_map_type=SimpleSensorMap,
         sensor_config={
             "camera": {
                 "blueprint": SensorBlueprints.CAMERA_RGB,
@@ -116,6 +117,7 @@ def main():
 
     context = SimpleContext(
         client=client,
+        map=world.get_map(),
         sensor_map=sensor_map,
         sensor_data_queue=sensor_data_queue,
         actor_map={},

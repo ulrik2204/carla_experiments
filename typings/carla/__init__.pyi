@@ -5988,3 +5988,4 @@ class DebugHelper:
         :param life_time: (float) Shape's lifespan. By default it only lasts one frame. Set this to 0 for permanent shapes.
         """
         ...
+

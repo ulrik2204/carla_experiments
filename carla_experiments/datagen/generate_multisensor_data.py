@@ -8,7 +8,7 @@ import carla
 
 from carla_experiments.carla_utils.constants import SensorBlueprints
 from carla_experiments.carla_utils.setup import (
-    CarlaContext,
+    BatchContext,
     game_loop,
     setup_carla_client,
     setup_sensors,
@@ -33,7 +33,7 @@ class AppSensorDataMap(TypedDict):
 
 
 @dataclass  # kw_only=True
-class AppContext(CarlaContext[AppSensorMap, AppActorsMap]):
+class AppContext(BatchContext[AppSensorMap, AppActorsMap]):
     folder_base_path: Path
     images_base_path: Path
     controls_base_path: Path
@@ -113,6 +113,7 @@ def main():
 
     context = AppContext(
         client=client,
+        map=carla_map,
         sensor_map=sensor_map,
         sensor_data_queue=sensor_data_queue,
         actor_map={},

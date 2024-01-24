@@ -6,6 +6,7 @@ import carla
 import cv2
 import ffmpeg
 import numpy as np
+import pymap3d as pm
 
 
 def frames_to_video(
@@ -83,3 +84,26 @@ def euler_to_quaternion(rotation: carla.Rotation):
     z = cr * cp * sy - sr * sp * cy
 
     return np.array([w, x, y, z])
+
+
+def carla_location_to_ecef(map: carla.Map, location: carla.Location):
+    geolocation = map.transform_to_geolocation(location)
+    latitude = geolocation.latitude
+    longitude = geolocation.longitude
+    altitude = geolocation.altitude
+
+    x, y, z = pm.geodetic2ecef(latitude, longitude, altitude)
+
+    return np.array([x, y, z])
+
+
+def ecef_to_carla_location(map: carla.Map, ecef: np.ndarray):
+    origin_geolocation = map.transform_to_geolocation(carla.Location(0, 0, 0))
+    origin_lat = origin_geolocation.latitude
+    origin_long = origin_geolocation.longitude
+    origin_alt = origin_geolocation.altitude
+
+    x, y, z = pm.ecef2enu(
+        ecef[0], ecef[1], ecef[2], origin_lat, origin_long, origin_alt
+    )
+    return carla.Location(x, y, z)

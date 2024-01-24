@@ -1,21 +1,20 @@
-import json
 import os
 import random
-import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from queue import Queue
-from tabnanny import check
-from typing import List, NamedTuple, Optional, Tuple, TypedDict, Union
+from typing import List, NamedTuple, Optional, Tuple, TypedDict
 
 import carla
 import numpy as np
 
 from carla_experiments.carla_utils.constants import SensorBlueprints
 from carla_experiments.carla_utils.setup import (
-    CarlaContext,
-    game_loop,
+    BatchContext,
+    batch,
+    create_dataset,
+    segment,
     setup_carla_client,
     setup_sensors,
 )
@@ -24,31 +23,29 @@ from carla_experiments.carla_utils.spawn import (
     spawn_vehicle_bots,
     spawn_walker_bots,
 )
-from carla_experiments.datagen.utils import euler_to_quaternion, frames_to_video
+from carla_experiments.carla_utils.types_carla_utils import BatchResult, SegmentResult
+from carla_experiments.datagen.utils import (
+    carla_location_to_ecef,
+    euler_to_quaternion,
+    frames_to_video,
+)
 
 
 class AppActorMap(TypedDict):
-    # TODO: I need to explicitly allow this otherwise I cannot destroy them
     vehicles: List[carla.Vehicle]
     walkers: List[Tuple[carla.Walker, carla.WalkerAIController]]
 
 
 class AppSensorMap(TypedDict):
     front_camera: carla.Sensor
-    # radar: carla.Sensor
-    # gnss: carla.Sensor
-    # imu: carla.Sensor
 
 
 class AppSensorDataMap(TypedDict):
     front_camera: carla.Image
-    # radar: carla.RadarMeasurement
-    # gnss: carla.GnssMeasurement
-    # imu: carla.IMUMeasurement
 
 
 @dataclass
-class AppContext(CarlaContext[AppSensorMap, AppActorMap]):
+class AppSettings:
     frame_rate: int
     folder_base_path: Path
     images_intermediary_folder: Path
@@ -58,18 +55,9 @@ class AppContext(CarlaContext[AppSensorMap, AppActorMap]):
     delete_intermediary_files: bool
 
 
-def _save_dict_as_json(data: dict, path: Path):
-    with path.open("w") as file:
-        json.dump(data, file)
-
-
-MAX_TIME = 60 * 2  # 2 minutes
-start_time = time.time()
-
-
-def check_time_elapsed_task(context: AppContext, _: AppSensorDataMap):
-    if time.time() - start_time > MAX_TIME:
-        raise KeyboardInterrupt()
+@dataclass
+class AppContext(BatchContext[AppSensorMap, AppActorMap], AppSettings):
+    ...
 
 
 def update_vehicle_lights_task(context: AppContext, _: AppSensorDataMap) -> None:
@@ -90,7 +78,8 @@ def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap) -> No
     ego_vehicle = context.ego_vehicle
     vehicle_transform = ego_vehicle.get_transform()
     location = vehicle_transform.location
-    location_np = np.array([location.x, location.y, location.z])
+    # TODO: Do I need to convert Location to ECEF coordinates?
+    location_np = carla_location_to_ecef(context.map, location)
     roatation_np = euler_to_quaternion(vehicle_transform.rotation)
     # waypoint = (
     #     context.client.get_world().get_map().get_waypoint(ego_vehicle.get_location())
@@ -228,18 +217,25 @@ def on_exit(context: AppContext) -> None:
         context.images_intermediary_folder.rmdir()
 
 
-def main():
-    # save_folder,
-    (
-        folder_base_path,
-        images_intermediary_folder,
-        global_pose_path,
-        location_intermediary_folder,
-        rotation_intermediary_folder,
-    ) = create_folders_if_not_exists()
-    frame_rate = 20
+@segment(frame_duration=20 * 60 * 2)  # 2 minutes (20 fps, 60s/min, 2 min)
+def stroll_segment(context: AppContext) -> SegmentResult:
+    spawn_point = context.map.get_spawn_points()[1]
+    context.ego_vehicle.set_transform(spawn_point)
+    return {
+        "tasks": [
+            spectator_follow_ego_vehicle_task,
+            save_data_task,
+            update_vehicle_lights_task,
+        ],
+        "on_exit": on_exit,
+    }
 
-    client = setup_carla_client("Town04", frame_rate=frame_rate)
+
+@batch
+def first_batch(settings: AppSettings) -> BatchResult:
+    # save_folder,
+
+    client = setup_carla_client("Town04", frame_rate=settings.frame_rate)
     # client = setup_carla_client("Town10HD")
     world = client.get_world()
     carla_map = world.get_map()
@@ -263,6 +259,7 @@ def main():
             },
         },
     )
+
     print("spawning vehicles")
     vehicle_bots = spawn_vehicle_bots(world, 10)
     print("spawning bots")
@@ -276,11 +273,39 @@ def main():
 
     context = AppContext(
         client=client,
+        map=carla_map,
         sensor_map=sensor_map,
         sensor_data_queue=sensor_data_queue,
         actor_map={"vehicles": vehicle_bots, "walkers": walker_bots},
         ego_vehicle=ego_vehicle,
-        frame_rate=frame_rate,
+        frame_rate=settings.frame_rate,
+        folder_base_path=settings.folder_base_path,
+        images_intermediary_folder=settings.images_intermediary_folder,
+        global_pose_path=settings.global_pose_path,
+        locations_intermediary_folder=settings.locations_intermediary_folder,
+        rotations_intermediary_folder=settings.rotations_intermediary_folder,
+        delete_intermediary_files=True,
+    )
+    print("App env: ", context)
+    # print("Starting game loop")
+    return {
+        "context": context,
+        "segments": [stroll_segment],
+        "on_exit": None,
+    }
+
+
+def main():
+    batches = [first_batch]
+    (
+        folder_base_path,
+        images_intermediary_folder,
+        global_pose_path,
+        location_intermediary_folder,
+        rotation_intermediary_folder,
+    ) = create_folders_if_not_exists()
+    settings = AppSettings(
+        frame_rate=20,
         folder_base_path=folder_base_path,
         images_intermediary_folder=images_intermediary_folder,
         global_pose_path=global_pose_path,
@@ -288,18 +313,7 @@ def main():
         rotations_intermediary_folder=rotation_intermediary_folder,
         delete_intermediary_files=True,
     )
-    print("App env: ", context)
-    print("Starting game loop")
-    game_loop(
-        context,
-        [
-            spectator_follow_ego_vehicle_task,
-            save_data_task,
-            update_vehicle_lights_task,
-            check_time_elapsed_task,
-        ],
-        on_exit=on_exit,
-    )
+    create_dataset(batches, settings)
 
 
 if __name__ == "__main__":

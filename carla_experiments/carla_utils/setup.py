@@ -1,5 +1,6 @@
 import sys
 import time
+from functools import wraps
 from queue import Empty, Queue
 from typing import Any, Callable, Dict, List, Mapping, Optional, Type, TypeVar, cast
 
@@ -8,7 +9,11 @@ import carla
 from carla_experiments.carla_utils.constants import AttributeDefaults, SensorBlueprints
 from carla_experiments.carla_utils.spawn import spawn_sensor
 from carla_experiments.carla_utils.types_carla_utils import (
-    CarlaContext,
+    Batch,
+    BatchContext,
+    DecoratedBatch,
+    DecoratedSegment,
+    Segment,
     SensorBlueprint,
     SensorConfig,
 )
@@ -82,7 +87,7 @@ def _handle_sensor_setup(
     return sensor
 
 
-def setup_carla_client(map: str, frame_rate: int = 20):
+def setup_carla_client(map: Optional[str] = None, frame_rate: int = 20):
     """Creates the CARLA client at given port and
     sets the world to synchronous mode with given frame rate.
     Also sets the timeout to 30 seconds.
@@ -96,7 +101,8 @@ def setup_carla_client(map: str, frame_rate: int = 20):
     """
     client = carla.Client("localhost", 2000)
     client.set_timeout(30.0)
-    client.load_world(map)
+    if map is not None:
+        client.load_world(map)
     world = client.get_world()
     client.get_trafficmanager().set_synchronous_mode(True)
 
@@ -125,10 +131,10 @@ def setup_sensors(
     return cast(return_sensor_map_type, sensor_map)
 
 
-TContext = TypeVar("TContext", bound=CarlaContext)
+TContext = TypeVar("TContext", bound=BatchContext)
 
 
-def _get_sensor_data_map(env: CarlaContext, queue_timeout: float = 10):
+def _get_sensor_data_map(env: BatchContext, queue_timeout: float = 10):
     try:
         data_dict = {}
         while len(data_dict.keys()) < len(env.sensor_map.keys()):
@@ -147,27 +153,39 @@ def _get_sensor_data_map(env: CarlaContext, queue_timeout: float = 10):
     return data_dict
 
 
+class StopSegment(Exception):
+    pass
+
+
 def game_loop(
     context: TContext,
     tasks: List[Callable[[TContext, TSensorDataMap], None]],
     on_exit: Optional[Callable[[TContext], None]] = None,
+    max_frames: Optional[int] = None,
 ):
+    frames = 0
     while True:
         try:  # in case of a crash, try to recover and continue
+            if max_frames is not None and frames >= max_frames:
+                raise StopSegment()
             sensor_data_map = _get_sensor_data_map(context)
             for task in tasks:
                 task(context, sensor_data_map)  # type: ignore
             time.sleep(0.01)
             context.client.get_world().tick()
+            frames += 1
         except (KeyboardInterrupt, Exception) as e:
-            if not isinstance(e, KeyboardInterrupt):
+            is_stop_segment = isinstance(e, StopSegment)
+            is_keyboard_interrupt = isinstance(e, KeyboardInterrupt)
+            if not is_stop_segment or not is_keyboard_interrupt:
                 print(e)
             if on_exit is not None:
                 on_exit(context)
             print("Exiting...")
             stop_actor(context.actor_map)
             stop_actor(context.sensor_map)
-            sys.exit()
+            if not is_stop_segment or is_keyboard_interrupt:
+                sys.exit()
 
 
 def stop_actor(actor):
@@ -184,3 +202,50 @@ def stop_actor(actor):
             stop_actor(a)
     else:
         raise ValueError(f"Unsupposed actor map type {type(actor)}")
+
+
+TSettings = TypeVar("TSettings")
+
+
+def create_dataset(batches: List[DecoratedBatch[TSettings]], settings: TSettings):
+    # This function is used to create a dataset from a list of batches
+    for batch in batches:
+        batch(settings)
+
+
+def batch(func: Batch[TSettings]) -> DecoratedBatch[TSettings]:
+    # This is a function to also be able to group the data generation into batches
+    # Each batch is a collection of segments with certain world settings.
+    @wraps(func)
+    def inner(settings: TSettings) -> None:
+        batch_result = func(settings)
+        for segment in batch_result["segments"]:
+            segment(batch_result["context"])
+        if batch_result["on_exit"] is not None:
+            batch_result["on_exit"](batch_result["context"])
+
+    return inner
+
+
+def segment(frame_duration: int):
+    # This function is used to be able to group the data generation into segments
+    # Each segment is a snippet of any frame length. It is provided the client
+    # by the batch, but can itself also change the world settings, like the map
+    # and weather.
+    # Each segment has:
+    # - a configure stage (set up actors, sensors, etc.)
+    # - a run stage with tasks (running the game loop with its tasks)
+    # - a cleanup stage (clean up actors, sensors, etc.)
+    def decorator(
+        func: Segment[TContext, TSensorDataMap]
+    ) -> DecoratedSegment[TContext]:
+        @wraps(func)
+        def inner(context: TContext) -> None:
+            segment_result = func(context)
+            tasks = segment_result["tasks"]
+            on_exit = segment_result["on_exit"]
+            game_loop(context, tasks, on_exit, max_frames=frame_duration)
+
+        return inner
+
+    return decorator
