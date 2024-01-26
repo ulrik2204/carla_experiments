@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from abc import ABC
 from dataclasses import dataclass
+from pathlib import Path
 from queue import Queue
 from typing import (
     Any,
     Callable,
+    Dict,
     Generic,
     List,
     Literal,
@@ -16,9 +18,11 @@ from typing import (
     Type,
     TypedDict,
     TypeVar,
+    Union,
 )
 
 import carla
+import numpy as np
 
 
 class Constant:
@@ -40,7 +44,7 @@ class SensorBlueprint(Generic[TSensorData]):
         return self.name.__hash__()
 
 
-TActorMap = TypeVar("TActorMap")
+TActorMap = TypeVar("TActorMap", bound=Mapping[str, Any])
 TSensorMap = TypeVar("TSensorMap")
 
 
@@ -79,12 +83,40 @@ class BatchContext(ABC, Generic[TSensorMap, TActorMap]):
 
 TContext = TypeVar("TContext", bound=BatchContext)
 TSensorDataMap = TypeVar("TSensorDataMap", bound=Mapping[str, Any])
-TActorMap = TypeVar("TActorMap", bound=Mapping[str, Any])
+
+SaveItemValue = Union[
+    Dict[str, "SaveItemValue"],
+    np.ndarray,
+    carla.Image,
+]
+SaveItems = Dict[str, SaveItemValue]
+
+
+TContextContra = TypeVar("TContextContra", bound=BatchContext, contravariant=True)
+TSensorDataMapContra = TypeVar(
+    "TSensorDataMapContra", bound=Mapping[str, Any], contravariant=True
+)
+
+
+class CarlaTask(Protocol, Generic[TContextContra, TSensorDataMapContra]):
+    def __call__(
+        self, context: TContextContra, sensor_data_map: TSensorDataMapContra, /
+    ) -> Union[SaveItems, None]:
+        ...
+
+
+TSaveFileBasePath = TypeVar("TSaveFileBasePath", bound=Optional[Path])
+
+
+class SegmentResultOptions(TypedDict, Generic[TContext], total=False):
+    save_items: SaveItems
+    on_segment_end: Callable[[TContext, Path], None]
+    cleanup_actors: bool
 
 
 class SegmentResult(TypedDict, Generic[TContext, TSensorDataMap]):
-    tasks: List[Callable[[TContext, TSensorDataMap], None]]
-    on_exit: Optional[Callable[[TContext], None]]
+    tasks: List[CarlaTask[TContext, TSensorDataMap]]
+    options: SegmentResultOptions[TContext]
 
 
 class Segment(Protocol, Generic[TContext, TSensorDataMap]):
@@ -97,15 +129,23 @@ TContextContra = TypeVar("TContextContra", bound=BatchContext, contravariant=Tru
 TSettings = TypeVar("TSettings")
 
 
+FlexiblePath = Union[str, Path]
+
+
 class DecoratedSegment(Protocol, Generic[TContextContra]):
-    def __call__(self, context: TContextContra) -> None:
+    def __call__(self, context: TContextContra, batch_base_path: Path) -> None:
         ...
+
+
+class BatchResultOptions(TypedDict, Generic[TContext], total=False):
+    on_batch_end: Callable[[TContext], None]
+    cleanup_actors: bool
 
 
 class BatchResult(TypedDict, Generic[TContext]):
     context: TContext
     segments: List[DecoratedSegment[TContext]]
-    on_exit: Optional[Callable[[TContext], None]]
+    options: BatchResultOptions[TContext]
 
 
 TSettingsContra = TypeVar("TSettingsContra", contravariant=True)
@@ -117,5 +157,5 @@ class Batch(Protocol, Generic[TSettingsContra]):
 
 
 class DecoratedBatch(Protocol, Generic[TSettingsContra]):
-    def __call__(self, settings: TSettingsContra) -> None:
+    def __call__(self, base_path: Path, settings: TSettingsContra) -> None:
         ...

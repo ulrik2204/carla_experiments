@@ -1,18 +1,23 @@
 import sys
 import time
 from functools import wraps
+from pathlib import Path
 from queue import Empty, Queue
 from typing import Any, Callable, Dict, List, Mapping, Optional, Type, TypeVar, cast
 
 import carla
+import numpy as np
 
 from carla_experiments.carla_utils.constants import AttributeDefaults, SensorBlueprints
 from carla_experiments.carla_utils.spawn import spawn_sensor
 from carla_experiments.carla_utils.types_carla_utils import (
     Batch,
     BatchContext,
+    CarlaTask,
     DecoratedBatch,
     DecoratedSegment,
+    FlexiblePath,
+    SaveItems,
     Segment,
     SensorBlueprint,
     SensorConfig,
@@ -21,6 +26,17 @@ from carla_experiments.carla_utils.types_carla_utils import (
 TSensorMap = TypeVar("TSensorMap", bound=Mapping[str, Any])
 TSensorDataMap = TypeVar("TSensorDataMap", bound=Mapping[str, Any])
 TActorMap = TypeVar("TActorMap", bound=Mapping[str, Any])
+
+
+def _flexible_path_to_path(flexible_path: Optional[FlexiblePath]) -> Path:
+    if flexible_path is None:
+        return Path("")
+    elif isinstance(flexible_path, str):
+        return Path(flexible_path)
+    elif isinstance(flexible_path, Path):
+        return flexible_path
+    else:
+        raise ValueError(f"Unknown path type {type(flexible_path)}")
 
 
 def _create_blueprint_changer(
@@ -157,20 +173,27 @@ class StopSegment(Exception):
     pass
 
 
-def game_loop(
+TSaveFileBasePath = TypeVar("TSaveFileBasePath", bound=Optional[Path])
+
+
+def game_loop_segment(
     context: TContext,
-    tasks: List[Callable[[TContext, TSensorDataMap], None]],
-    on_exit: Optional[Callable[[TContext], None]] = None,
+    tasks: List[CarlaTask[TContext, TSensorDataMap]],
+    on_finished: Optional[Callable[[TContext, TSaveFileBasePath], None]] = None,
     max_frames: Optional[int] = None,
+    save_files_base_path: TSaveFileBasePath = None,
+    cleanup_actors: bool = False,
 ):
     frames = 0
     while True:
         try:  # in case of a crash, try to recover and continue
-            if max_frames is not None and frames >= max_frames:
+            if max_frames is not None and frames > max_frames:
                 raise StopSegment()
             sensor_data_map = _get_sensor_data_map(context)
             for task in tasks:
-                task(context, sensor_data_map)  # type: ignore
+                save_items = task(context, sensor_data_map)  # type: ignore
+                if save_items is not None and save_files_base_path is not None:
+                    save_items_to_file(save_files_base_path, save_items)
             time.sleep(0.01)
             context.client.get_world().tick()
             frames += 1
@@ -179,12 +202,13 @@ def game_loop(
             is_keyboard_interrupt = isinstance(e, KeyboardInterrupt)
             if not is_stop_segment or not is_keyboard_interrupt:
                 print(e)
-            if on_exit is not None:
-                on_exit(context)
-            print("Exiting...")
-            stop_actor(context.actor_map)
-            stop_actor(context.sensor_map)
-            if not is_stop_segment or is_keyboard_interrupt:
+            if on_finished is not None:
+                on_finished(context, save_files_base_path)
+            if cleanup_actors or is_keyboard_interrupt:
+                print("Cleaning up actors...")
+                stop_actor(context.actor_map)
+                stop_actor(context.sensor_map)
+            if is_keyboard_interrupt:
                 sys.exit()
             break
 
@@ -208,40 +232,69 @@ def stop_actor(actor):
 TSettings = TypeVar("TSettings")
 
 
-def create_dataset(batches: List[DecoratedBatch[TSettings]], settings: TSettings):
+def save_items_to_file(base_path: Path, items: SaveItems):
+    base_path.mkdir(parents=True, exist_ok=True)
+    for path, value in items.items():
+        path_to_save = base_path / path
+        if isinstance(value, dict):
+            save_items_to_file(path_to_save, value)
+        elif isinstance(value, np.ndarray):
+            np.save(path_to_save, value)
+        elif isinstance(value, carla.Image):
+            value.save_to_disk(path_to_save.as_posix())
+        else:
+            raise ValueError(f"Unknown save item type {type(value)}")
+
+
+def create_dataset(
+    batches: List[DecoratedBatch[TSettings]],
+    base_folder: FlexiblePath,
+    settings: TSettings,
+):
     # This function is used to create a dataset from a list of batches
+    base_path = _flexible_path_to_path(base_folder)
     for batch in batches:
-        batch(settings)
+        batch(base_path, settings)
 
 
-def batch(func: Batch[TSettings]) -> DecoratedBatch[TSettings]:
+def batch(batch_folder: FlexiblePath):
     """Decorator for a batch function. A batch function is a function that
-    sets up a CARLA client and world, spawns an ego vehicle, and sets up sensors.
-    All segments in a batch share the same context created by the batch.
+        sets up a CARLA client and world, spawns an ego vehicle, and sets up sensors.
+        All segments in a batch share the same context created by the batch.
+
+
 
     Args:
-        func (Batch[TSettings]): The batch function to decorate.
+        batch_folder (FlexiblePath): The folder to save the batch data in.
 
-    Returns:
-        DecoratedBatch[TSettings]: The decorated batch function to be used
-            when calling the "create_dataset" function.
     """
 
-    # This is a function to also be able to group the data generation into batches
-    # Each batch is a collection of segments with certain world settings.
-    @wraps(func)
-    def inner(settings: TSettings) -> None:
-        batch_result = func(settings)
-        for segment in batch_result["segments"]:
-            segment(batch_result["context"])
-        if batch_result["on_exit"] is not None:
-            batch_result["on_exit"](batch_result["context"])
+    def decorator(func: Batch[TSettings]) -> DecoratedBatch[TSettings]:
+        # This is a function to also be able to group the data generation into batches
+        # Each batch is a collection of segments with certain world settings.
+        @wraps(func)
+        def inner(base_path: Path, settings: TSettings) -> None:
+            batch_result = func(settings)
+            batch_path = _flexible_path_to_path(batch_folder)
+            full_base_path = base_path / batch_path
+            for segment in batch_result["segments"]:
+                segment(batch_result["context"], full_base_path)
+            optionals = batch_result["options"]
+            on_exit = optionals["on_batch_end"] if "on_batch_end" in optionals else None
+            if on_exit:
+                on_exit(batch_result["context"])
+            print("Cleaning up actors...")
+            context = batch_result["context"]
+            stop_actor(context.actor_map)
+            stop_actor(context.sensor_map)
 
-    return inner
+        return inner
+
+    return decorator
 
 
 def segment(
-    frame_duration: int,
+    frame_duration: int, segment_base_folder: Optional[FlexiblePath] = None
 ) -> Callable[[Segment[TContext, TSensorDataMap]], DecoratedSegment[TContext]]:  # type: ignore
     """Decorator for a segment function. A segment function is a function that
     creates a small segment of data, e.g. 60 seconds of driving. It is provided the
@@ -270,11 +323,29 @@ def segment(
         func: Segment[TContext, TSensorDataMap]
     ) -> DecoratedSegment[TContext]:
         @wraps(func)
-        def inner(context: TContext) -> None:
+        def inner(context: TContext, batch_base_path: Path) -> None:
             segment_result = func(context)
             tasks = segment_result["tasks"]
-            on_exit = segment_result["on_exit"]
-            game_loop(context, tasks, on_exit, max_frames=frame_duration)
+            optionals = segment_result["options"]
+            segment_path = _flexible_path_to_path(segment_base_folder)
+            save_items_base_path = batch_base_path / segment_path
+            on_exit = (
+                optionals["on_segment_end"] if "on_segment_end" in optionals else None
+            )
+            cleanup_actors = (
+                optionals["cleanup_actors"] if "cleanup_actors" in optionals else False
+            )
+            game_loop_segment(
+                context=context,
+                tasks=tasks,
+                on_finished=on_exit,
+                max_frames=frame_duration,
+                save_files_base_path=save_items_base_path,
+                cleanup_actors=cleanup_actors,
+            )
+            save_items = optionals["save_items"] if "save_items" in optionals else None
+            if save_items is not None:
+                save_items_to_file(save_items_base_path, save_items)
 
         return inner
 

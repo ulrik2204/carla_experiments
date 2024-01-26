@@ -9,7 +9,7 @@ import carla
 from carla_experiments.carla_utils.constants import SensorBlueprints
 from carla_experiments.carla_utils.setup import (
     BatchContext,
-    game_loop,
+    game_loop_segment,
     setup_carla_client,
     setup_sensors,
 )
@@ -125,7 +125,7 @@ def main():
     print("App env: ", context)
     # TODO: How to handle config variables from the command line like save folder?
     # Should it be part of the CarlaSimulationEnvironment object?
-    game_loop(context, [spectator_follow_ego_vehicle_task, save_image_task])
+    game_loop_segment(context, [spectator_follow_ego_vehicle_task, save_image_task])
 
 
 if __name__ == "__main__":

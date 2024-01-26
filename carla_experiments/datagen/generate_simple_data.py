@@ -10,7 +10,7 @@ import carla
 
 from carla_experiments.carla_utils.constants import SensorBlueprints
 from carla_experiments.carla_utils.setup import (
-    game_loop,
+    game_loop_segment,
     setup_carla_client,
     setup_sensors,
 )
@@ -128,7 +128,7 @@ def main():
     )
 
     tasks = [follow_camera_task, save_data_task, check_stop_time_task]
-    game_loop(context, tasks)
+    game_loop_segment(context, tasks)
 
 
 if __name__ == "__main__":

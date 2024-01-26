@@ -87,10 +87,10 @@ def spawn_vehicle(
 
     if autopilot:
         # Sleep before setting autopilot is important because of timing issues.
-        time.sleep(1)
+        time.sleep(0.1)
         if tick:
             world.tick()
-            time.sleep(1)
+            time.sleep(0.1)
         vehicle.set_autopilot(True)
         print("Autopilot set")
 

@@ -1,10 +1,11 @@
 import os
 import random
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from queue import Queue
-from typing import List, NamedTuple, Optional, Tuple, TypedDict
+from typing import List, Tuple, TypedDict
 
 import carla
 import numpy as np
@@ -47,11 +48,11 @@ class AppSensorDataMap(TypedDict):
 @dataclass
 class AppSettings:
     frame_rate: int
-    folder_base_path: Path
-    images_intermediary_folder: Path
-    global_pose_path: Path
-    locations_intermediary_folder: Path
-    rotations_intermediary_folder: Path
+    # folder_base_path: Path
+    # images_intermediary_folder: Path
+    # global_pose_path: Path
+    # locations_intermediary_folder: Path
+    # rotations_intermediary_folder: Path
     delete_intermediary_files: bool
 
 
@@ -60,14 +61,16 @@ class AppContext(BatchContext[AppSensorMap, AppActorMap], AppSettings):
     ...
 
 
-def update_vehicle_lights_task(context: AppContext, _: AppSensorDataMap) -> None:
+def update_vehicle_lights_task(
+    context: AppContext, sensor_data_map: AppSensorDataMap
+) -> None:
     traffic_manager = context.client.get_trafficmanager()
     vehicles = context.actor_map["vehicles"]
     for vehicle in vehicles:
         traffic_manager.update_vehicle_lights(vehicle, True)
 
 
-def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap) -> None:
+def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
     front_image = sensor_data_map["front_camera"]
     # radar_data = parse_radar_data(sensor_data_map["radar"])
     # imu_data = parse_imu_data(sensor_data_map["imu"])
@@ -81,23 +84,23 @@ def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap) -> No
     # TODO: Do I need to convert Location to ECEF coordinates?
     location_np = carla_location_to_ecef(context.map, location)
     roatation_np = euler_to_quaternion(vehicle_transform.rotation)
-    # waypoint = (
-    #     context.client.get_world().get_map().get_waypoint(ego_vehicle.get_location())
-    # )
-    # TODO: Append images to an array instead of saving them to disk
-    front_image.save_to_disk(
-        f"{context.images_intermediary_folder.as_posix()}/{frame:06d}.jpg"
-    )
-    # np.save(f"{context.radar_base_path.as_posix()}/{frame:06d}.npy", radar_data)
-    np.save(
-        f"{context.global_pose_path.as_posix()}/location/{frame:06d}.npy", location_np
-    )
-    np.save(
-        f"{context.global_pose_path.as_posix()}/rotation/{frame:06d}.npy", roatation_np
-    )
+    frame = f"{front_image.frame:06d}"
+    return {
+        "location": {
+            frame: location_np,
+        },
+        "rotation": {
+            frame: roatation_np,
+        },
+        "images": {
+            frame: front_image,
+        },
+    }
 
 
-def spectator_follow_ego_vehicle_task(context: AppContext, _: AppSensorDataMap) -> None:
+def spectator_follow_ego_vehicle_task(
+    context: AppContext, sensor_data_map: AppSensorDataMap
+) -> None:
     ego_vehicle = context.ego_vehicle
     vehicle_transform = ego_vehicle.get_transform()
     spectator = context.client.get_world().get_spectator()
@@ -129,38 +132,7 @@ def configure_traffic_manager(
         traffic_manager.random_right_lanechange_percentage(bot, random.randint(0, 60))
 
 
-class Folders(NamedTuple):
-    folder_base_path: Path
-    images_intermediary_folder: Path
-    global_pose_path: Path
-    location_intermediary_folder: Path
-    rotation_intermediary_folder: Path
-
-
-def create_folders_if_not_exists(
-    base_path: Optional[Path] = None,
-) -> Folders:
-    timestamp_string = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    folder_base_path = base_path or Path(f"output/{timestamp_string}")
-    folder_base_path.mkdir(parents=True, exist_ok=True)
-    images_intermediary_folder = folder_base_path / "images"
-    images_intermediary_folder.mkdir(parents=True, exist_ok=True)
-    global_pose_path = folder_base_path / "global_pose"
-    global_pose_path.mkdir(parents=True, exist_ok=True)
-    location_intermediary_folder = global_pose_path / "location"
-    location_intermediary_folder.mkdir(parents=True, exist_ok=True)
-    rotation_intermediary_folder = global_pose_path / "rotation"
-    rotation_intermediary_folder.mkdir(parents=True, exist_ok=True)
-    return Folders(
-        folder_base_path,
-        images_intermediary_folder,
-        global_pose_path,
-        location_intermediary_folder,
-        rotation_intermediary_folder,
-    )
-
-
-def concatenate_array_files(folder_path: Path, output_file_path: Path):
+def combine_array_files(folder_path: Path, output_file_path: Path):
     """
     Concatenates numpy arrays from files in a given folder and saves the result.
 
@@ -179,7 +151,7 @@ def concatenate_array_files(folder_path: Path, output_file_path: Path):
     for file in files:
         arrays.append(np.load(file))
 
-    concatenated_array = np.concatenate(arrays, axis=0)
+    concatenated_array = np.vstack(arrays)
 
     # Save the concatenated array
     print("Saving concatenated array to: ", output_file_path)
@@ -188,51 +160,72 @@ def concatenate_array_files(folder_path: Path, output_file_path: Path):
     with_npy.rename(output_file_path)
 
 
-def on_exit(context: AppContext) -> None:
+def on_segment_end(context: AppContext, save_files_base_path: Path) -> None:
     # This function will take all the images and create a hevc video
     print("Segment done, collecting files...")
+    images_path = save_files_base_path / "images"
+    locations_path = save_files_base_path / "location"
+    rotations_path = save_files_base_path / "rotation"
     frames_to_video(
-        context.images_intermediary_folder,
-        context.folder_base_path / "video.hevc",
+        images_path,
+        save_files_base_path / "video.hevc",
         context.frame_rate,
     )
     # This function will also take all the global poses and concatenate into a single file
-    concatenate_array_files(
-        context.locations_intermediary_folder,
-        context.global_pose_path / "frame_locations",
+    global_pose_path = save_files_base_path / "global_pose"
+    global_pose_path.mkdir(parents=True, exist_ok=True)
+    combine_array_files(
+        locations_path,
+        global_pose_path / "frame_locations",
     )
-    concatenate_array_files(
-        context.rotations_intermediary_folder,
-        context.global_pose_path / "frame_orientations",
+    combine_array_files(
+        rotations_path,
+        global_pose_path / "frame_orientations",
     )
 
     if context.delete_intermediary_files:
-        for file in context.locations_intermediary_folder.iterdir():
+        for file in locations_path.iterdir():
             file.unlink()
-        for file in context.rotations_intermediary_folder.iterdir():
+        for file in rotations_path.iterdir():
             file.unlink()
-        for file in context.images_intermediary_folder.iterdir():
+        for file in images_path.iterdir():
             file.unlink()
-        context.locations_intermediary_folder.rmdir()
-        context.rotations_intermediary_folder.rmdir()
-        context.images_intermediary_folder.rmdir()
+        locations_path.rmdir()
+        rotations_path.rmdir()
+        images_path.rmdir()
 
 
-@segment(frame_duration=20 * 30)  # 30 minutes (20 fps, 30s)
-def stroll_segment(context: AppContext) -> SegmentResult:
-    spawn_point = context.map.get_spawn_points()[1]
-    context.ego_vehicle.set_transform(spawn_point)
-    return {
-        "tasks": [
-            spectator_follow_ego_vehicle_task,
-            save_data_task,
-            update_vehicle_lights_task,
-        ],
-        "on_exit": on_exit,
-    }
+start_id = int(time.time())
 
 
-@batch
+def _generate_segment_id():
+    global start_id
+    start_id += 1
+    return str(start_id)
+
+
+def generate_stroll_segment():
+    segment_id = _generate_segment_id()
+    print("segment_id: ", segment_id)
+
+    def stroll_segment(context: AppContext) -> SegmentResult:
+        spawn_point = random.choice(context.map.get_spawn_points())
+        context.ego_vehicle.set_transform(spawn_point)
+        return {
+            "tasks": [
+                spectator_follow_ego_vehicle_task,
+                save_data_task,
+                update_vehicle_lights_task,
+            ],
+            "options": {"on_segment_end": on_segment_end},
+        }
+
+    return segment(frame_duration=20 * 30, segment_base_folder=segment_id)(
+        stroll_segment
+    )
+
+
+@batch("./Chunk_1")
 def first_batch(settings: AppSettings) -> BatchResult:
     # save_folder,
 
@@ -280,41 +273,32 @@ def first_batch(settings: AppSettings) -> BatchResult:
         actor_map={"vehicles": vehicle_bots, "walkers": walker_bots},
         ego_vehicle=ego_vehicle,
         frame_rate=settings.frame_rate,
-        folder_base_path=settings.folder_base_path,
-        images_intermediary_folder=settings.images_intermediary_folder,
-        global_pose_path=settings.global_pose_path,
-        locations_intermediary_folder=settings.locations_intermediary_folder,
-        rotations_intermediary_folder=settings.rotations_intermediary_folder,
+        # folder_base_path=settings.folder_base_path,
+        # images_intermediary_folder=settings.images_intermediary_folder,
+        # global_pose_path=settings.global_pose_path,
+        # locations_intermediary_folder=settings.locations_intermediary_folder,
+        # rotations_intermediary_folder=settings.rotations_intermediary_folder,
         delete_intermediary_files=True,
     )
     print("App env: ", context)
     # print("Starting game loop")
+    # TODO: Handle to not stop actors if it is a segment, but only at the end of a batch
+    generated_segments = [generate_stroll_segment() for _ in range(3)]
     return {
         "context": context,
-        "segments": [stroll_segment],
-        "on_exit": None,
+        "segments": generated_segments,
+        "options": {},
     }
 
 
 def main():
     batches = [first_batch]
-    (
-        folder_base_path,
-        images_intermediary_folder,
-        global_pose_path,
-        location_intermediary_folder,
-        rotation_intermediary_folder,
-    ) = create_folders_if_not_exists()
+    base_path = Path("./output") / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     settings = AppSettings(
         frame_rate=20,
-        folder_base_path=folder_base_path,
-        images_intermediary_folder=images_intermediary_folder,
-        global_pose_path=global_pose_path,
-        locations_intermediary_folder=location_intermediary_folder,
-        rotations_intermediary_folder=rotation_intermediary_folder,
         delete_intermediary_files=True,
     )
-    create_dataset(batches, settings)
+    create_dataset(batches, base_path, settings)
 
 
 if __name__ == "__main__":
