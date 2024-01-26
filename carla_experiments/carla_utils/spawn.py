@@ -202,14 +202,20 @@ def _walk_towards_goal(
     walk_randomly_afterwards: bool = False,
 ):
     for goal in walker_path:
-        controller.go_to_location(goal)
-        controller.set_max_speed(1 + random.random())  # random speed between 1 and 2
+        try:
+            controller.go_to_location(goal)
+            controller.set_max_speed(
+                1 + random.random()
+            )  # random speed between 1 and 2
 
-        # Wait for the walker to reach the destination (with some threshold)
-        while walker.get_transform().location.distance(goal) > 1.0:
-            time.sleep(1)
+            # Wait for the walker to reach the destination (with some threshold)
+            while walker.get_transform().location.distance(goal) > 1.0:
+                time.sleep(1)
 
-        time.sleep(random.randint(1, 5))
+            time.sleep(random.randint(1, 5))
+        # If the walker is destroyed, stop the loop
+        except RuntimeError:
+            break
     if walk_randomly_afterwards:
         _random_walking_behaviour(world, walker, controller)
 
@@ -219,16 +225,22 @@ def _random_walking_behaviour(
 ):
     while True:
         # Choose a random destination
-        destination = world.get_random_location_from_navigation()
-        controller.go_to_location(destination)
-        controller.set_max_speed(1 + random.random())  # random speed between 1 and 2
+        try:
+            destination = world.get_random_location_from_navigation()
+            controller.go_to_location(destination)
+            controller.set_max_speed(
+                1 + random.random()
+            )  # random speed between 1 and 2
 
-        # Wait for the walker to reach the destination (with some threshold)
-        while walker.get_transform().location.distance(destination) > 1.0:
-            time.sleep(1)
+            # Wait for the walker to reach the destination (with some threshold)
+            while walker.get_transform().location.distance(destination) > 1.0:
+                time.sleep(1)
 
-        # Optional: Wait for some time before moving to the next destination
-        time.sleep(random.randint(1, 5))
+            # Optional: Wait for some time before moving to the next destination
+            time.sleep(random.randint(1, 5))
+        # If the walker is destroyed, stop the loop
+        except RuntimeError:
+            break
 
 
 def spawn_walker(
@@ -282,6 +294,7 @@ def spawn_walker(
             daemon=True,
         )
         path_thread.start()
+        # TODO: Handle stopping the thread when the walker is destroyed
 
     elif walk_randomly_afterwards:
         # destination = world.get_random_location_from_navigation()
@@ -317,7 +330,7 @@ def spawn_walker_bots(
 
 
 def _try_spawn_walker_bot(
-    world: carla.World, tries: int = 5
+    world: carla.World, tries: int = 10
 ) -> Tuple[carla.Walker, carla.WalkerAIController]:
     if tries == 0:
         raise RuntimeError("Could not spawn walker bot, even after retries.")

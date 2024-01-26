@@ -187,7 +187,7 @@ def game_loop_segment(
     frames = 0
     while True:
         try:  # in case of a crash, try to recover and continue
-            if max_frames is not None and frames > max_frames:
+            if max_frames is not None and frames >= max_frames:
                 raise StopSegment()
             sensor_data_map = _get_sensor_data_map(context)
             for task in tasks:
@@ -216,15 +216,20 @@ def game_loop_segment(
 def stop_actor(actor):
     if isinstance(actor, carla.Actor):
         actor.destroy()
+        del actor
     elif isinstance(actor, carla.Sensor):
         actor.stop()
         actor.destroy()
+        del actor
     elif isinstance(actor, list) or isinstance(actor, tuple):
         for a in actor:
             stop_actor(a)
+            if isinstance(actor, list):
+                actor.clear()
     elif isinstance(actor, dict):
         for a in actor.values():
             stop_actor(a)
+        actor.clear()
     else:
         raise ValueError(f"Unsupposed actor map type {type(actor)}")
 

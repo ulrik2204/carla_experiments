@@ -5,9 +5,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from queue import Queue
-from typing import List, Tuple, TypedDict
+from typing import List, Optional, Tuple, TypedDict
 
 import carla
+import click
 import numpy as np
 
 from carla_experiments.carla_utils.constants import SensorBlueprints
@@ -195,7 +196,7 @@ def on_segment_end(context: AppContext, save_files_base_path: Path) -> None:
         images_path.rmdir()
 
 
-start_id = int(time.time())
+start_id = 0
 
 
 def _generate_segment_id():
@@ -225,80 +226,94 @@ def generate_stroll_segment():
     )
 
 
-@batch("./Chunk_1")
-def first_batch(settings: AppSettings) -> BatchResult:
-    # save_folder,
+def create_batch(map: str, batch_path: str):
+    def first_batch(settings: AppSettings) -> BatchResult:
+        # save_folder,
 
-    client = setup_carla_client("Town04", frame_rate=settings.frame_rate)
-    # client = setup_carla_client("Town10HD")
-    world = client.get_world()
-    carla_map = world.get_map()
-    ego_vehicle = spawn_ego_vehicle(
-        world, autopilot=True, spawn_point=carla_map.get_spawn_points()[0]
-    )
-    world.set_pedestrians_cross_factor(0.1)
-    sensor_data_queue = Queue()
-    # TODO: Check sensor positions
-    sensor_map = setup_sensors(
-        world,
-        ego_vehicle,
-        sensor_data_queue=sensor_data_queue,
-        return_sensor_map_type=AppSensorMap,
-        sensor_config={
-            "front_camera": {
-                "blueprint": SensorBlueprints.CAMERA_RGB,
-                "location": (2, 0, 1),
-                "rotation": (0, 0, 0),
-                "attributes": {},
+        client = setup_carla_client(map, frame_rate=settings.frame_rate)
+        # client = setup_carla_client("Town10HD")
+        world = client.get_world()
+        carla_map = world.get_map()
+        ego_vehicle = spawn_ego_vehicle(
+            world, autopilot=True, spawn_point=carla_map.get_spawn_points()[0]
+        )
+        world.set_pedestrians_cross_factor(0.1)
+        sensor_data_queue = Queue()
+        # TODO: Check sensor positions
+        sensor_map = setup_sensors(
+            world,
+            ego_vehicle,
+            sensor_data_queue=sensor_data_queue,
+            return_sensor_map_type=AppSensorMap,
+            sensor_config={
+                "front_camera": {
+                    "blueprint": SensorBlueprints.CAMERA_RGB,
+                    "location": (2, 0, 1),
+                    "rotation": (0, 0, 0),
+                    "attributes": {},
+                },
             },
-        },
-    )
+        )
 
-    print("spawning vehicles")
-    vehicle_bots = spawn_vehicle_bots(world, 10)
-    print("spawning bots")
-    # TODO: Spawning walkers is not working, check generate_traffic example
-    walker_bots = spawn_walker_bots(world, 15)
-    print("configuring traffic manager")
-    traffic_manager = client.get_trafficmanager()
-    configure_traffic_manager(traffic_manager, ego_vehicle, vehicle_bots)
+        print("spawning vehicles")
+        vehicle_bots = spawn_vehicle_bots(world, 10)
+        print("spawning bots")
+        # TODO: Spawning walkers is not working, check generate_traffic example
+        walker_bots = spawn_walker_bots(world, 15)
+        print("configuring traffic manager")
+        traffic_manager = client.get_trafficmanager()
+        configure_traffic_manager(traffic_manager, ego_vehicle, vehicle_bots)
 
-    # client.get_trafficmanager().set_global_distance_to_leading_vehicle()
+        # client.get_trafficmanager().set_global_distance_to_leading_vehicle()
 
-    context = AppContext(
-        client=client,
-        map=carla_map,
-        sensor_map=sensor_map,
-        sensor_data_queue=sensor_data_queue,
-        actor_map={"vehicles": vehicle_bots, "walkers": walker_bots},
-        ego_vehicle=ego_vehicle,
-        frame_rate=settings.frame_rate,
-        # folder_base_path=settings.folder_base_path,
-        # images_intermediary_folder=settings.images_intermediary_folder,
-        # global_pose_path=settings.global_pose_path,
-        # locations_intermediary_folder=settings.locations_intermediary_folder,
-        # rotations_intermediary_folder=settings.rotations_intermediary_folder,
-        delete_intermediary_files=True,
-    )
-    print("App env: ", context)
-    # print("Starting game loop")
-    # TODO: Handle to not stop actors if it is a segment, but only at the end of a batch
-    generated_segments = [generate_stroll_segment() for _ in range(3)]
-    return {
-        "context": context,
-        "segments": generated_segments,
-        "options": {},
-    }
+        context = AppContext(
+            client=client,
+            map=carla_map,
+            sensor_map=sensor_map,
+            sensor_data_queue=sensor_data_queue,
+            actor_map={"vehicles": vehicle_bots, "walkers": walker_bots},
+            ego_vehicle=ego_vehicle,
+            frame_rate=settings.frame_rate,
+            # folder_base_path=settings.folder_base_path,
+            # images_intermediary_folder=settings.images_intermediary_folder,
+            # global_pose_path=settings.global_pose_path,
+            # locations_intermediary_folder=settings.locations_intermediary_folder,
+            # rotations_intermediary_folder=settings.rotations_intermediary_folder,
+            delete_intermediary_files=True,
+        )
+        print("App env: ", context)
+        # print("Starting game loop")
+        # TODO: Handle to not stop actors if it is a segment, but only at the end of a batch
+        generated_segments = [generate_stroll_segment() for _ in range(3)]
+        return {
+            "context": context,
+            "segments": generated_segments,
+            "options": {},
+        }
+
+    return batch(batch_path)(first_batch)
 
 
-def main():
-    batches = [first_batch]
-    base_path = Path("./output") / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+@click.command()
+@click.option("--root-folder", type=str, default=None)
+def main(root_folder: Optional[str]):
+    batch1 = create_batch("Town01", "batch1")
+    batch2 = create_batch("Town02", "batch2")
+    batch3 = create_batch("Town03", "batch3")
+    batch4 = create_batch("Town04", "batch4")
+    chunks = {"Chunk_1": [batch1, batch2], "Chunk_2": [batch3, batch4]}
+    if root_folder is None:
+        base_path = Path("./output") / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    else:
+        base_path = Path(root_folder)
+
     settings = AppSettings(
         frame_rate=20,
         delete_intermediary_files=True,
     )
-    create_dataset(batches, base_path, settings)
+    for chunk, batches in chunks.items():
+        print("--- Creating", chunk, "---")
+        create_dataset(batches, base_path / chunk, settings)
 
 
 if __name__ == "__main__":
