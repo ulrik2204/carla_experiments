@@ -176,6 +176,20 @@ class StopSegment(Exception):
 TSaveFileBasePath = TypeVar("TSaveFileBasePath", bound=Optional[Path])
 
 
+def _stop_loop(
+    context: TContext,
+    save_files_base_path: TSaveFileBasePath,
+    on_finished: Optional[Callable[[TContext, TSaveFileBasePath], None]] = None,
+    cleanup_actors: bool = False,
+):
+    if on_finished is not None:
+        on_finished(context, save_files_base_path)
+    if cleanup_actors:
+        print("Cleaning up actors...")
+        stop_actor(context.actor_map)
+        stop_actor(context.sensor_map)
+
+
 def game_loop_segment(
     context: TContext,
     tasks: List[CarlaTask[TContext, TSensorDataMap]],
@@ -188,7 +202,8 @@ def game_loop_segment(
     while True:
         try:  # in case of a crash, try to recover and continue
             if max_frames is not None and frames >= max_frames:
-                raise StopSegment()
+                _stop_loop(context, save_files_base_path, on_finished, cleanup_actors)
+                break
             sensor_data_map = _get_sensor_data_map(context)
             for task in tasks:
                 save_items = task(context, sensor_data_map)  # type: ignore
@@ -197,20 +212,9 @@ def game_loop_segment(
             time.sleep(0.01)
             context.client.get_world().tick()
             frames += 1
-        except (KeyboardInterrupt, Exception) as e:
-            is_stop_segment = isinstance(e, StopSegment)
-            is_keyboard_interrupt = isinstance(e, KeyboardInterrupt)
-            if not is_stop_segment or not is_keyboard_interrupt:
-                print(e)
-            if on_finished is not None:
-                on_finished(context, save_files_base_path)
-            if cleanup_actors or is_keyboard_interrupt:
-                print("Cleaning up actors...")
-                stop_actor(context.actor_map)
-                stop_actor(context.sensor_map)
-            if is_keyboard_interrupt:
-                sys.exit()
-            break
+        except KeyboardInterrupt:
+            _stop_loop(context, save_files_base_path, on_finished, cleanup_actors)
+            sys.exit()
 
 
 def stop_actor(actor):
