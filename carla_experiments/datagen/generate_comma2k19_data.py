@@ -1,6 +1,5 @@
 import os
 import random
-import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -177,7 +176,7 @@ def on_segment_end(context: AppContext, save_files_base_path: Path) -> None:
     global_pose_path.mkdir(parents=True, exist_ok=True)
     combine_array_files(
         locations_path,
-        global_pose_path / "frame_locations",
+        global_pose_path / "frame_positions",
     )
     combine_array_files(
         rotations_path,
@@ -297,7 +296,9 @@ def create_batch(map: str, batch_path: str):
 @click.command()
 @click.option("--root-folder", type=str, default=None)
 def main(root_folder: Optional[str]):
-    batch1 = create_batch("Town01", "batch1")
+    batch1 = create_batch(
+        "Town01", "batch1"
+    )  # Comma2k19 called this each batch by the date
     batch2 = create_batch("Town02", "batch2")
     batch3 = create_batch("Town03", "batch3")
     batch4 = create_batch("Town04", "batch4")
