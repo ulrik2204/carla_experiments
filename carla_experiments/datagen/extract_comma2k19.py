@@ -13,7 +13,7 @@ cv2.ocl.setUseOpenCL(False)
 
 
 def _extract_sequence_id(sequence_path: str):
-    return sequence_path.split("/")[-1]
+    return sequence_path.split("/")[-2]
 
 
 # From https://github.com/OpenDriveLab/Openpilot-Deepdive/blob/main/tools/extract_comma2k19.py

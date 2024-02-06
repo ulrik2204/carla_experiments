@@ -1,10 +1,11 @@
 import os
 import random
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from queue import Queue
-from typing import List, Optional, Tuple, TypedDict
+from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
 import carla
 import click
@@ -58,7 +59,7 @@ class AppSettings:
 
 @dataclass
 class AppContext(BatchContext[AppSensorMap, AppActorMap], AppSettings):
-    ...
+    data_dict: Dict[str, Any]
 
 
 def update_vehicle_lights_task(
@@ -85,17 +86,20 @@ def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
     location_np = carla_location_to_ecef(context.map, location)
     roatation_np = euler_to_quaternion(vehicle_transform.rotation)
     frame = f"{front_image.frame:06d}"
-    return {
-        "location": {
-            frame: location_np,
-        },
-        "rotation": {
-            frame: roatation_np,
-        },
-        "images": {
-            frame: front_image,
-        },
-    }
+    context.data_dict["images"][frame] = front_image
+    context.data_dict["location"][frame] = location_np
+    context.data_dict["rotation"][frame] = roatation_np
+    # return {
+    #     "location": {
+    #         frame: location_np,
+    #     },
+    #     "rotation": {
+    #         frame: roatation_np,
+    #     },
+    #     "images": {
+    #         frame: front_image,
+    #     },
+    # }
 
 
 def spectator_follow_ego_vehicle_task(
@@ -118,6 +122,7 @@ def configure_traffic_manager(
     traffic_manager.set_random_device_seed(42)
     traffic_manager.set_global_distance_to_leading_vehicle(2.5)
     traffic_manager.set_respawn_dormant_vehicles(True)
+    # traffic_manager.set_desired_speed(ego_vehicle, 50 / 3.6)  # 50 km/h
     # traffic_manager.set_hybrid_physics_mode(True)
     # traffic_manager.set_hybrid_physics_radius(70)
 
@@ -128,8 +133,8 @@ def configure_traffic_manager(
         traffic_manager.vehicle_percentage_speed_difference(
             bot, random.randint(-30, 30)
         )
-        traffic_manager.random_left_lanechange_percentage(bot, random.randint(0, 60))
-        traffic_manager.random_right_lanechange_percentage(bot, random.randint(0, 60))
+        traffic_manager.random_left_lanechange_percentage(bot, random.randint(1, 60))
+        traffic_manager.random_right_lanechange_percentage(bot, random.randint(1, 60))
 
 
 def combine_array_files(folder_path: Path, output_file_path: Path):
@@ -162,7 +167,10 @@ def combine_array_files(folder_path: Path, output_file_path: Path):
 
 def on_segment_end(context: AppContext, save_files_base_path: Path) -> None:
     # This function will take all the images and create a hevc video
-    print("Segment done, collecting files...")
+    print("Collecting files...")
+    print("Waiting 10 seconds to make sure all files are written")
+    time.sleep(10)
+    # TODO: Create some code (somewhere) to ensure all files are created before running this
     images_path = save_files_base_path / "images"
     locations_path = save_files_base_path / "location"
     rotations_path = save_files_base_path / "rotation"
@@ -211,18 +219,41 @@ def generate_stroll_segment():
     def stroll_segment(context: AppContext) -> SegmentResult:
         spawn_point = random.choice(context.map.get_spawn_points())
         context.ego_vehicle.set_transform(spawn_point)
+
+        def save_files(context: AppContext):
+            total_images = len(context.data_dict["images"])
+            # TODO: At this point, not all images are added to the data_dict
+            print(
+                f"Segment finished, saving {total_images} images (and corresponding data)"
+            )
+            return context.data_dict
+
         return {
             "tasks": [
                 spectator_follow_ego_vehicle_task,
                 save_data_task,
                 update_vehicle_lights_task,
             ],
-            "options": {"on_segment_end": on_segment_end},
+            "options": {
+                "on_finish_save_files": save_files,
+                "on_segment_end": on_segment_end,
+            },
         }
 
-    return segment(frame_duration=20 * 30, segment_base_folder=segment_id)(
+    # 20 Hz for 60 seconds = 1200 frames
+    return segment(frame_duration=20 * 60, segment_base_folder=segment_id)(
         stroll_segment
     )
+
+
+def configure_traffic_lights(world: carla.World):
+    actors = world.get_actors().filter("traffic.traffic_light")
+    for actor in actors:
+        if isinstance(actor, carla.TrafficLight):
+            actor.set_state(carla.TrafficLightState.Green)
+            actor.set_green_time(5)
+            actor.set_yellow_time(1)
+            actor.set_red_time(5)
 
 
 def create_batch(map: str, batch_path: str):
@@ -249,7 +280,7 @@ def create_batch(map: str, batch_path: str):
                     "blueprint": SensorBlueprints.CAMERA_RGB,
                     "location": (2, 0, 1),
                     "rotation": (0, 0, 0),
-                    "attributes": {},
+                    "attributes": {"image_size_x": "1164", "image_size_y": "874"},
                 },
             },
         )
@@ -262,6 +293,7 @@ def create_batch(map: str, batch_path: str):
         print("configuring traffic manager")
         traffic_manager = client.get_trafficmanager()
         configure_traffic_manager(traffic_manager, ego_vehicle, vehicle_bots)
+        configure_traffic_lights(world)
 
         # client.get_trafficmanager().set_global_distance_to_leading_vehicle()
 
@@ -273,6 +305,7 @@ def create_batch(map: str, batch_path: str):
             actor_map={"vehicles": vehicle_bots, "walkers": walker_bots},
             ego_vehicle=ego_vehicle,
             frame_rate=settings.frame_rate,
+            data_dict=dict(location={}, rotation={}, images={}),
             # folder_base_path=settings.folder_base_path,
             # images_intermediary_folder=settings.images_intermediary_folder,
             # global_pose_path=settings.global_pose_path,
@@ -283,7 +316,7 @@ def create_batch(map: str, batch_path: str):
         print("App env: ", context)
         # print("Starting game loop")
         # TODO: Handle to not stop actors if it is a segment, but only at the end of a batch
-        generated_segments = [generate_stroll_segment() for _ in range(3)]
+        generated_segments = [generate_stroll_segment() for _ in range(1)]
         return {
             "context": context,
             "segments": generated_segments,
@@ -296,13 +329,13 @@ def create_batch(map: str, batch_path: str):
 @click.command()
 @click.option("--root-folder", type=str, default=None)
 def main(root_folder: Optional[str]):
-    batch1 = create_batch(
-        "Town01", "batch1"
-    )  # Comma2k19 called this each batch by the date
+    # Comma2k19 called this each batch by the date
+    batch1 = create_batch("Town01", "batch1")
     batch2 = create_batch("Town02", "batch2")
     batch3 = create_batch("Town03", "batch3")
     batch4 = create_batch("Town04", "batch4")
-    chunks = {"Chunk_1": [batch1, batch2], "Chunk_2": [batch3, batch4]}
+    # chunks = {"Chunk_1": [batch1, batch2], "Chunk_2": [batch3, batch4]}
+    chunks = {"Chunk_1": [batch1]}
     if root_folder is None:
         base_path = Path("./output") / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     else:

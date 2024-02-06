@@ -64,10 +64,18 @@ def frames_to_video(
 
 
 def euler_to_quaternion(rotation: carla.Rotation):
+    # I have confirmed that this works the same way OP-Deepdive does it
     # Convert degrees to radians
-    pitch = np.radians(rotation.pitch)
-    yaw = np.radians(rotation.yaw)
-    roll = np.radians(rotation.roll)
+    # pitch = z, yaw = y, roll = z rotation
+    # Converting from left-handed to right-handed coordinate system negates yaw and roll
+    # Swap pitch and roll to convert from Unreal Engine to ECEECEF
+    converted_pitch = -rotation.roll
+    converted_yaw = -rotation.yaw
+    converted_roll = rotation.pitch
+
+    pitch = np.radians(converted_pitch)
+    yaw = np.radians(converted_yaw)
+    roll = np.radians(converted_roll)
 
     # Pre-calculate sine and cosine for pitch, yaw, and roll
     cy = np.cos(yaw * 0.5)
@@ -83,16 +91,30 @@ def euler_to_quaternion(rotation: carla.Rotation):
     y = cr * sp * cy + sr * cp * sy
     z = cr * cp * sy - sr * sp * cy
 
+    # TODO: May need to change something to convert from left-handed to right-handed coordinate system
+
+    # Need to negate y and z to convert from left-handed to right-handed coordinate system
     return np.array([w, x, y, z])
 
 
 def carla_location_to_ecef(map: carla.Map, location: carla.Location):
-    geolocation = map.transform_to_geolocation(location)
-    latitude = geolocation.latitude
-    longitude = geolocation.longitude
-    altitude = geolocation.altitude
+    # I want to check if this finds the origin
+    origin_geolocation = map.transform_to_geolocation(carla.Location(0, 0, 0))
+    # geolocation = map.transform_to_geolocation(location)
+    # https://docs.unrealengine.com/4.27/en-US/BuildingWorlds/Georeferencing/
 
-    x, y, z = pm.geodetic2ecef(latitude, longitude, altitude)
+    x, y, z = pm.enu2ecef(
+        location.x,
+        -location.y,  # Negate y to convert from right-handed to left-handed coordinate system
+        location.z,
+        origin_geolocation.latitude,
+        origin_geolocation.longitude,
+        origin_geolocation.altitude,
+        deg=True,
+    )
+    # latitude = geolocation.latitude
+    # longitude = geolocation.longitude
+    # altitude = geolocation.altitude
 
     return np.array([x, y, z])
 

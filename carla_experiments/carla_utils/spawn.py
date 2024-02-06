@@ -189,7 +189,7 @@ def spawn_vehicle_bots(
     for _ in range(number_of_vehicles):
         vehicle = _try_spawn_vehicle_bot(world, spawn_points)
         vehicles.append(vehicle)
-    time.sleep(1)
+    time.sleep(0.1)
     world.tick()
     return vehicles
 

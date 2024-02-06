@@ -101,15 +101,14 @@ TSensorDataMapContra = TypeVar(
 class CarlaTask(Protocol, Generic[TContextContra, TSensorDataMapContra]):
     def __call__(
         self, context: TContextContra, sensor_data_map: TSensorDataMapContra, /
-    ) -> Union[SaveItems, None]:
-        ...
+    ) -> Union[SaveItems, None]: ...
 
 
 TSaveFileBasePath = TypeVar("TSaveFileBasePath", bound=Optional[Path])
 
 
 class SegmentResultOptions(TypedDict, Generic[TContext], total=False):
-    save_items: SaveItems
+    on_finish_save_files: Callable[[TContext], SaveItems]
     on_segment_end: Callable[[TContext, Path], None]
     cleanup_actors: bool
 
@@ -120,8 +119,9 @@ class SegmentResult(TypedDict, Generic[TContext, TSensorDataMap]):
 
 
 class Segment(Protocol, Generic[TContext, TSensorDataMap]):
-    def __call__(self, context: TContext) -> SegmentResult[TContext, TSensorDataMap]:
-        ...
+    def __call__(
+        self, context: TContext
+    ) -> SegmentResult[TContext, TSensorDataMap]: ...
 
 
 TContextContra = TypeVar("TContextContra", bound=BatchContext, contravariant=True)
@@ -133,8 +133,7 @@ FlexiblePath = Union[str, Path]
 
 
 class DecoratedSegment(Protocol, Generic[TContextContra]):
-    def __call__(self, context: TContextContra, batch_base_path: Path) -> None:
-        ...
+    def __call__(self, context: TContextContra, batch_base_path: Path) -> None: ...
 
 
 class BatchResultOptions(TypedDict, Generic[TContext], total=False):
@@ -152,10 +151,8 @@ TSettingsContra = TypeVar("TSettingsContra", contravariant=True)
 
 
 class Batch(Protocol, Generic[TSettingsContra]):
-    def __call__(self, settings: TSettingsContra) -> BatchResult:
-        ...
+    def __call__(self, settings: TSettingsContra) -> BatchResult: ...
 
 
 class DecoratedBatch(Protocol, Generic[TSettingsContra]):
-    def __call__(self, base_path: Path, settings: TSettingsContra) -> None:
-        ...
+    def __call__(self, base_path: Path, settings: TSettingsContra) -> None: ...

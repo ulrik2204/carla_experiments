@@ -338,23 +338,36 @@ def segment(
             optionals = segment_result["options"]
             segment_path = _flexible_path_to_path(segment_base_folder)
             save_items_base_path = batch_base_path / segment_path
-            on_exit = (
-                optionals["on_segment_end"] if "on_segment_end" in optionals else None
-            )
             cleanup_actors = (
                 optionals["cleanup_actors"] if "cleanup_actors" in optionals else False
             )
+
+            def on_end(context: TContext, save_files_base_path: Path):
+                on_finish_save_files = (
+                    optionals["on_finish_save_files"]
+                    if "on_finish_save_files" in optionals
+                    else None
+                )
+                if on_finish_save_files is not None:
+                    save_items = on_finish_save_files(context)
+                    save_items_to_file(save_files_base_path, save_items)
+                    # To make sure the files are written to disk before next step
+                on_exit = (
+                    optionals["on_segment_end"]
+                    if "on_segment_end" in optionals
+                    else None
+                )
+                if on_exit is not None:
+                    on_exit(context, save_files_base_path)
+
             game_loop_segment(
                 context=context,
                 tasks=tasks,
-                on_finished=on_exit,
+                on_finished=on_end,
                 max_frames=frame_duration,
                 save_files_base_path=save_items_base_path,
                 cleanup_actors=cleanup_actors,
             )
-            save_items = optionals["save_items"] if "save_items" in optionals else None
-            if save_items is not None:
-                save_items_to_file(save_items_base_path, save_items)
 
         return inner
 
