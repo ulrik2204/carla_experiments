@@ -7,6 +7,7 @@ import cv2
 import ffmpeg
 import numpy as np
 import pymap3d as pm
+from scipy.spatial.transform import Rotation as R
 
 
 def frames_to_video(
@@ -66,16 +67,10 @@ def frames_to_video(
 def euler_to_quaternion(rotation: carla.Rotation):
     # I have confirmed that this works the same way OP-Deepdive does it
     # Convert degrees to radians
-    # pitch = z, yaw = y, roll = z rotation
-    # Converting from left-handed to right-handed coordinate system negates yaw and roll
-    # Swap pitch and roll to convert from Unreal Engine to ECEECEF
-    converted_pitch = -rotation.roll
-    converted_yaw = -rotation.yaw
-    converted_roll = rotation.pitch
 
-    pitch = np.radians(converted_pitch)
-    yaw = np.radians(converted_yaw)
-    roll = np.radians(converted_roll)
+    pitch = -np.radians(rotation.pitch)
+    yaw = -np.radians(rotation.yaw) + np.pi / 2
+    roll = np.radians(rotation.roll)
 
     # Pre-calculate sine and cosine for pitch, yaw, and roll
     cy = np.cos(yaw * 0.5)
@@ -97,16 +92,125 @@ def euler_to_quaternion(rotation: carla.Rotation):
     return np.array([w, x, y, z])
 
 
+def euler_to_quaternion2(map: carla.Map, rotation: carla.Rotation):
+    origin_geolocation = map.transform_to_geolocation(carla.Location(0, 0, 0))
+    lat0 = origin_geolocation.latitude
+    lon0 = origin_geolocation.longitude
+    # alt0 = origin_geolocation.altitude
+
+    # I know this rot matrix works in the original implementation
+    # Construct rotation matrix from ECEF to ENU frames
+    # https://gssc.esa.int/navipedia/index.php/Transformations_between_ECEF_and_ENU_coordinates
+    # r = R.from_matrix([
+    #     [-np.sin(lon0),  -np.cos(lon0)*np.sin(lat0),   np.cos(lon0)*np.cos(lat0)],
+    #     [np.cos(lon0),   -np.sin(lon0)*np.sin(lat0),   np.sin(lon0)*np.cos(lat0)],
+    #     [0,               np.cos(lat0),                np.sin(lat0)             ]]).inv()
+
+    # I think we should remove .inv() because I think original example was from ECEF to ENU
+    # TODO: Add conversion of alt0 as well (Ulrik)
+    r = R.from_matrix(
+        [
+            [-np.sin(lon0), -np.cos(lon0) * np.sin(lat0), np.cos(lon0) * np.cos(lat0)],
+            [np.cos(lon0), -np.sin(lon0) * np.sin(lat0), np.sin(lon0) * np.cos(lat0)],
+            [0, np.cos(lat0), np.sin(lat0)],
+        ]
+    )
+    # https://carla.readthedocs.io/en/latest/python_api/#carlarotation
+    # https://se.mathworks.com/help/uav/ug/coordinate-systems-for-unreal-engine-simulation-in-uav-toolbox.html
+    # In carla
+    # pitch is right-handed rotation around the y-axis
+    # yaw is left-handed rotation around the z-axis
+    # roll is right-handed rotation around the x-axis
+    # To adjust for the difference in coordinate systems, we need to negate pitch and yaw
+    x = np.radians(rotation.roll)
+    y = -np.radians(rotation.pitch)
+    z = -np.radians(rotation.yaw)
+
+    # Not tested
+    enu_rot = R.from_euler("xyz", (x, y, z), degrees=False)
+    ecef_rot = enu_rot.as_matrix() @ r.as_matrix()
+    # This returns the quaternion on the [x, y, z, w] format
+    ecef_orientation = R.from_matrix(ecef_rot).as_quat()
+    x = ecef_orientation[0]
+    y = ecef_orientation[1]
+    z = ecef_orientation[2]
+    w = ecef_orientation[3]
+
+    # print(f"{ecef_orientation = }")
+    return np.array([w, x, y, z])
+
+
+def carla_location_to_ecef2(map: carla.Map, location: carla.Location):
+    origin_geolocation = map.transform_to_geolocation(carla.Location(0, 0, 0))
+    lat0 = np.radians(origin_geolocation.latitude)
+    lon0 = np.radians(origin_geolocation.longitude)
+    alt0 = np.radians(origin_geolocation.altitude)
+    x0, y0, z0 = pm.geodetic2ecef(lat0, lon0, alt0, deg=False)
+    r = R.from_matrix(
+        [
+            [-np.sin(lon0), -np.cos(lon0) * np.sin(lat0), np.cos(lon0) * np.cos(lat0)],
+            [np.cos(lon0), -np.sin(lon0) * np.sin(lat0), np.sin(lon0) * np.cos(lat0)],
+            [0, np.cos(lat0), np.sin(lat0)],
+        ]
+    )
+    enu_pos = np.array([location.x, -location.y, location.z])
+    ecef_pos = enu_pos @ r.as_matrix() + (x0, y0, z0)
+    return ecef_pos
+
+
+def something():
+    # Does not do anything in the gist
+    # lat0, lon0, _ = pymap3d.ecef2geodetic(x0, y0, z0, deg=False)
+
+    # Origin of the ENU frame
+    lat0, lon0 = (63.421639, 10.428341)
+    x0, y0, z0 = pm.geodetic2ecef(lat0, lon0, 0)
+    print(x0, y0, z0)
+
+    # I know this rot matrix works in the original implementation
+    # Construct rotation matrix from ECEF to ENU frames
+    # https://gssc.esa.int/navipedia/index.php/Transformations_between_ECEF_and_ENU_coordinates
+    # r = R.from_matrix([
+    #     [-np.sin(lon0),  -np.cos(lon0)*np.sin(lat0),   np.cos(lon0)*np.cos(lat0)],
+    #     [np.cos(lon0),   -np.sin(lon0)*np.sin(lat0),   np.sin(lon0)*np.cos(lat0)],
+    #     [0,               np.cos(lat0),                np.sin(lat0)             ]]).inv()
+
+    # I think we should remove .inv() because I think original example was from ECEF to ENU
+    # TODO: Add conversion of alt0 as well (Ulrik)
+    r = R.from_matrix(
+        [
+            [-np.sin(lon0), -np.cos(lon0) * np.sin(lat0), np.cos(lon0) * np.cos(lat0)],
+            [np.cos(lon0), -np.sin(lon0) * np.sin(lat0), np.sin(lon0) * np.cos(lat0)],
+            [0, np.cos(lat0), np.sin(lat0)],
+        ]
+    )
+
+    # Not tested
+    enu_pos = np.array([0, 0, 0])
+    ecef_pos = enu_pos @ r.as_matrix() + (x0, y0, z0)
+
+    # Not tested
+    enu_rot = R.from_euler("xyz", (0, 0, 0), degrees=False)
+    ecef_rot = enu_rot.as_matrix() @ r.as_matrix()
+    ecef_orientation = R.from_matrix(ecef_rot).as_quat()
+
+    print(f"{ecef_pos = }")
+    print(f"{ecef_orientation = }")
+
+
 def carla_location_to_ecef(map: carla.Map, location: carla.Location):
     # I want to check if this finds the origin
     origin_geolocation = map.transform_to_geolocation(carla.Location(0, 0, 0))
     # geolocation = map.transform_to_geolocation(location)
     # https://docs.unrealengine.com/4.27/en-US/BuildingWorlds/Georeferencing/
+    e_enu = location.x
+    n_enu = -location.y
+    u_enu = location.z
 
     x, y, z = pm.enu2ecef(
-        location.x,
-        -location.y,  # Negate y to convert from right-handed to left-handed coordinate system
-        location.z,
+        e_enu,
+        n_enu,  # Negate y to convert from right-handed to left-handed coordinate system
+        u_enu,
         origin_geolocation.latitude,
         origin_geolocation.longitude,
         origin_geolocation.altitude,

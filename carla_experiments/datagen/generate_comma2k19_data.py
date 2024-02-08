@@ -1,6 +1,5 @@
 import os
 import random
-import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -28,7 +27,7 @@ from carla_experiments.carla_utils.spawn import (
 from carla_experiments.carla_utils.types_carla_utils import BatchResult, SegmentResult
 from carla_experiments.datagen.utils import (
     carla_location_to_ecef,
-    euler_to_quaternion,
+    euler_to_quaternion2,
     frames_to_video,
 )
 
@@ -71,24 +70,34 @@ def update_vehicle_lights_task(
         traffic_manager.update_vehicle_lights(vehicle, True)
 
 
+frame_id = 0
+
+
+def _generate_frame_id():
+    global frame_id
+    frame_id += 1
+    return f"{frame_id:06d}"
+
+
 def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
     front_image = sensor_data_map["front_camera"]
     # radar_data = parse_radar_data(sensor_data_map["radar"])
     # imu_data = parse_imu_data(sensor_data_map["imu"])
     # gnss_data = parse_gnss_data(sensor_data_map["gnss"])
     # speed = calculate_vehicle_speed(context.ego_vehicle)
-    frame = front_image.frame
     # front_image.timestamp  # TODO: use this for frame times?
     ego_vehicle = context.ego_vehicle
     vehicle_transform = ego_vehicle.get_transform()
     location = vehicle_transform.location
     # TODO: Do I need to convert Location to ECEF coordinates?
     location_np = carla_location_to_ecef(context.map, location)
-    roatation_np = euler_to_quaternion(vehicle_transform.rotation)
-    frame = f"{front_image.frame:06d}"
+    roatation_np = euler_to_quaternion2(context.map, vehicle_transform.rotation)
+    frame = _generate_frame_id()
+    # print(f"before add [frame {frame}]", len(context.data_dict["images"]))
     context.data_dict["images"][frame] = front_image
     context.data_dict["location"][frame] = location_np
     context.data_dict["rotation"][frame] = roatation_np
+    # print(f"after add [frame {frame}]", len(context.data_dict["images"]))
     # return {
     #     "location": {
     #         frame: location_np,
@@ -168,8 +177,6 @@ def combine_array_files(folder_path: Path, output_file_path: Path):
 def on_segment_end(context: AppContext, save_files_base_path: Path) -> None:
     # This function will take all the images and create a hevc video
     print("Collecting files...")
-    print("Waiting 10 seconds to make sure all files are written")
-    time.sleep(10)
     # TODO: Create some code (somewhere) to ensure all files are created before running this
     images_path = save_files_base_path / "images"
     locations_path = save_files_base_path / "location"
@@ -212,21 +219,23 @@ def _generate_segment_id():
     return str(start_id)
 
 
+def save_files(ctx: AppContext):
+    print("Save_data_files_run_count", frame_id)
+    # TODO: At this point, not all images are added to the data_dict
+    total_images = len(ctx.data_dict["images"])
+    print(f"Segment finished, saving {total_images} images (and corresponding data)")
+    return ctx.data_dict
+
+
 def generate_stroll_segment():
     segment_id = _generate_segment_id()
     print("segment_id: ", segment_id)
+    # 20 Hz for 60 seconds = 1200 frames
+    frame_duration = 20 * 60
 
     def stroll_segment(context: AppContext) -> SegmentResult:
         spawn_point = random.choice(context.map.get_spawn_points())
         context.ego_vehicle.set_transform(spawn_point)
-
-        def save_files(context: AppContext):
-            total_images = len(context.data_dict["images"])
-            # TODO: At this point, not all images are added to the data_dict
-            print(
-                f"Segment finished, saving {total_images} images (and corresponding data)"
-            )
-            return context.data_dict
 
         return {
             "tasks": [
@@ -240,8 +249,7 @@ def generate_stroll_segment():
             },
         }
 
-    # 20 Hz for 60 seconds = 1200 frames
-    return segment(frame_duration=20 * 60, segment_base_folder=segment_id)(
+    return segment(frame_duration=frame_duration, segment_base_folder=segment_id)(
         stroll_segment
     )
 

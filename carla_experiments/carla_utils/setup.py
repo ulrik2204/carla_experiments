@@ -1,6 +1,7 @@
 import sys
 import time
 from functools import wraps
+from glob import glob
 from pathlib import Path
 from queue import Empty, Queue
 from typing import Any, Callable, Dict, List, Mapping, Optional, Type, TypeVar, cast
@@ -213,7 +214,7 @@ def game_loop_segment(
             context.client.get_world().tick()
             frames += 1
         except KeyboardInterrupt:
-            _stop_loop(context, save_files_base_path, on_finished, cleanup_actors)
+            _stop_loop(context, save_files_base_path, None, cleanup_actors)
             sys.exit()
 
 
@@ -243,16 +244,25 @@ TSettings = TypeVar("TSettings")
 
 def save_items_to_file(base_path: Path, items: SaveItems):
     base_path.mkdir(parents=True, exist_ok=True)
-    for path, value in items.items():
-        path_to_save = base_path / path
-        if isinstance(value, dict):
-            save_items_to_file(path_to_save, value)
-        elif isinstance(value, np.ndarray):
-            np.save(path_to_save, value)
-        elif isinstance(value, carla.Image):
-            value.save_to_disk(path_to_save.as_posix())
-        else:
-            raise ValueError(f"Unknown save item type {type(value)}")
+    item_dicts = [(base_path, items)]
+    files: List[Path] = []
+    while True:
+        used_base_path, used_items = item_dicts.pop(0)
+        for path, value in used_items.items():
+            path_to_save = used_base_path / path
+            if isinstance(value, dict):
+                path_to_save.mkdir(parents=True, exist_ok=True)
+                item_dicts.append((path_to_save, value))
+            elif isinstance(value, np.ndarray):
+                np.save(path_to_save, value)
+                files.append(path_to_save)
+            elif isinstance(value, carla.Image):
+                value.save_to_disk(path_to_save.as_posix())
+                files.append(path_to_save)
+            else:
+                raise ValueError(f"Unknown save item type {type(value)}")
+        if len(item_dicts) == 0:
+            break
 
 
 def create_dataset(
@@ -341,24 +351,23 @@ def segment(
             cleanup_actors = (
                 optionals["cleanup_actors"] if "cleanup_actors" in optionals else False
             )
+            on_finish_save_files = (
+                optionals["on_finish_save_files"]
+                if "on_finish_save_files" in optionals
+                else None
+            )
 
-            def on_end(context: TContext, save_files_base_path: Path):
-                on_finish_save_files = (
-                    optionals["on_finish_save_files"]
-                    if "on_finish_save_files" in optionals
-                    else None
-                )
+            on_exit = (
+                optionals["on_segment_end"] if "on_segment_end" in optionals else None
+            )
+
+            def on_end(ctx: TContext, save_files_base_path: Path):
                 if on_finish_save_files is not None:
-                    save_items = on_finish_save_files(context)
+                    save_items = on_finish_save_files(ctx)
                     save_items_to_file(save_files_base_path, save_items)
                     # To make sure the files are written to disk before next step
-                on_exit = (
-                    optionals["on_segment_end"]
-                    if "on_segment_end" in optionals
-                    else None
-                )
                 if on_exit is not None:
-                    on_exit(context, save_files_base_path)
+                    on_exit(ctx, save_files_base_path)
 
             game_loop_segment(
                 context=context,
