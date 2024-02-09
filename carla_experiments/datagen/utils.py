@@ -1,6 +1,8 @@
 import os
 import re
+from email.mime import image
 from pathlib import Path
+from typing import List
 
 import carla
 import cv2
@@ -8,6 +10,41 @@ import ffmpeg
 import numpy as np
 import pymap3d as pm
 from scipy.spatial.transform import Rotation as R
+
+
+def carla_images_to_mp4(carla_images: List[carla.Image], output_file: str, fps: int):
+
+    # Convert the first image to set the video properties
+    first_image = carla_image_to_bgr_array(carla_images[0])
+    height, width, _ = first_image.shape
+
+    # Initialize the VideoWriter object
+    fourcc = cv2.VideoWriter.fourcc(*"mp4v")  # 'mp4v' for .mp4 files
+    video = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
+
+    # Process each Carla image
+    for carla_image in carla_images:
+        frame = carla_image_to_bgr_array(carla_image)
+        video.write(frame)  # Expects bgr format
+
+    # Release the VideoWriter
+    video.release()
+
+
+def carla_image_to_bgr_array(carla_image: carla.Image) -> np.ndarray:
+    array = np.frombuffer(carla_image.raw_data, dtype=np.dtype("uint8"))
+    array = np.reshape(
+        array, (carla_image.height, carla_image.width, 4)
+    )  # 4 channels (BGRA)
+    array = array[:, :, :3]  # Drop the alpha channel
+    return array
+
+
+def mp4_to_hevc(input_file_mp4: Path, output_file_hevc: Path):
+    ffmpeg.input(input_file_mp4.as_posix()).output(
+        output_file_hevc.as_posix(), vcodec="libx265"
+    ).run()
+    # delete the mp4 file
 
 
 def frames_to_video(
@@ -92,10 +129,12 @@ def euler_to_quaternion(rotation: carla.Rotation):
     return np.array([w, x, y, z])
 
 
+# HERE: The one currently in use
 def euler_to_quaternion2(map: carla.Map, rotation: carla.Rotation):
     origin_geolocation = map.transform_to_geolocation(carla.Location(0, 0, 0))
-    lat0 = origin_geolocation.latitude
-    lon0 = origin_geolocation.longitude
+    # print("origin_geolocation = ", origin_geolocation.latitude, origin_geolocation.longitude, origin_geolocation.altitude)
+    lat0 = np.radians(origin_geolocation.latitude)
+    lon0 = np.radians(origin_geolocation.longitude)
     # alt0 = origin_geolocation.altitude
 
     # I know this rot matrix works in the original implementation
@@ -119,8 +158,8 @@ def euler_to_quaternion2(map: carla.Map, rotation: carla.Rotation):
     # https://se.mathworks.com/help/uav/ug/coordinate-systems-for-unreal-engine-simulation-in-uav-toolbox.html
     # In carla
     # pitch is right-handed rotation around the y-axis
-    # yaw is left-handed rotation around the z-axis
-    # roll is right-handed rotation around the x-axis
+    # yaw is rotation around the z-axis
+    # roll is rotation around the x-axis
     # To adjust for the difference in coordinate systems, we need to negate pitch and yaw
     x = np.radians(rotation.roll)
     y = -np.radians(rotation.pitch)
@@ -128,7 +167,7 @@ def euler_to_quaternion2(map: carla.Map, rotation: carla.Rotation):
 
     # Not tested
     enu_rot = R.from_euler("xyz", (x, y, z), degrees=False)
-    ecef_rot = enu_rot.as_matrix() @ r.as_matrix()
+    ecef_rot = r.as_matrix() @ enu_rot.as_matrix()
     # This returns the quaternion on the [x, y, z, w] format
     ecef_orientation = R.from_matrix(ecef_rot).as_quat()
     x = ecef_orientation[0]
@@ -140,6 +179,7 @@ def euler_to_quaternion2(map: carla.Map, rotation: carla.Rotation):
     return np.array([w, x, y, z])
 
 
+# HERE: This is wrong for some reason
 def carla_location_to_ecef2(map: carla.Map, location: carla.Location):
     origin_geolocation = map.transform_to_geolocation(carla.Location(0, 0, 0))
     lat0 = np.radians(origin_geolocation.latitude)
@@ -198,23 +238,29 @@ def something():
     print(f"{ecef_orientation = }")
 
 
+# HERE: The one currently in use
 def carla_location_to_ecef(map: carla.Map, location: carla.Location):
     # I want to check if this finds the origin
     origin_geolocation = map.transform_to_geolocation(carla.Location(0, 0, 0))
     # geolocation = map.transform_to_geolocation(location)
     # https://docs.unrealengine.com/4.27/en-US/BuildingWorlds/Georeferencing/
     e_enu = location.x
+    # Negate y to convert from right-handed to left-handed coordinate system
     n_enu = -location.y
     u_enu = location.z
 
+    latitude = np.radians(origin_geolocation.latitude)
+    longitude = np.radians(origin_geolocation.longitude)
+    altitude = origin_geolocation.altitude  # In meters
+
     x, y, z = pm.enu2ecef(
         e_enu,
-        n_enu,  # Negate y to convert from right-handed to left-handed coordinate system
+        n_enu,
         u_enu,
-        origin_geolocation.latitude,
-        origin_geolocation.longitude,
-        origin_geolocation.altitude,
-        deg=True,
+        latitude,
+        longitude,
+        altitude,
+        deg=False,
     )
     # latitude = geolocation.latitude
     # longitude = geolocation.longitude

@@ -4,11 +4,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from queue import Queue
-from typing import Any, Dict, List, Optional, Tuple, TypedDict
+from typing import List, Optional, Tuple, TypedDict
 
 import carla
 import click
 import numpy as np
+from PIL import Image
 
 from carla_experiments.carla_utils.constants import SensorBlueprints
 from carla_experiments.carla_utils.setup import (
@@ -26,9 +27,10 @@ from carla_experiments.carla_utils.spawn import (
 )
 from carla_experiments.carla_utils.types_carla_utils import BatchResult, SegmentResult
 from carla_experiments.datagen.utils import (
+    carla_images_to_mp4,
     carla_location_to_ecef,
     euler_to_quaternion2,
-    frames_to_video,
+    mp4_to_hevc,
 )
 
 
@@ -56,9 +58,15 @@ class AppSettings:
     delete_intermediary_files: bool
 
 
+class DataDict(TypedDict):
+    location: List[np.ndarray]
+    rotation: List[np.ndarray]
+    images: List[carla.Image]
+
+
 @dataclass
 class AppContext(BatchContext[AppSensorMap, AppActorMap], AppSettings):
-    data_dict: Dict[str, Any]
+    data_dict: DataDict
 
 
 def update_vehicle_lights_task(
@@ -68,15 +76,6 @@ def update_vehicle_lights_task(
     vehicles = context.actor_map["vehicles"]
     for vehicle in vehicles:
         traffic_manager.update_vehicle_lights(vehicle, True)
-
-
-frame_id = 0
-
-
-def _generate_frame_id():
-    global frame_id
-    frame_id += 1
-    return f"{frame_id:06d}"
 
 
 def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
@@ -89,14 +88,16 @@ def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
     ego_vehicle = context.ego_vehicle
     vehicle_transform = ego_vehicle.get_transform()
     location = vehicle_transform.location
-    # TODO: Do I need to convert Location to ECEF coordinates?
+    rotation = vehicle_transform.rotation
     location_np = carla_location_to_ecef(context.map, location)
-    roatation_np = euler_to_quaternion2(context.map, vehicle_transform.rotation)
-    frame = _generate_frame_id()
+    # location_np = np.array([location.x, location.y, location.z])
+    rotation_np = euler_to_quaternion2(context.map, rotation)
+    # rotation_np = np.array([rotation.pitch, rotation.yaw, rotation.roll])
+    # frame = _generate_frame_id()
     # print(f"before add [frame {frame}]", len(context.data_dict["images"]))
-    context.data_dict["images"][frame] = front_image
-    context.data_dict["location"][frame] = location_np
-    context.data_dict["rotation"][frame] = roatation_np
+    context.data_dict["images"].append(front_image)
+    context.data_dict["location"].append(location_np)
+    context.data_dict["rotation"].append(rotation_np)
     # print(f"after add [frame {frame}]", len(context.data_dict["images"]))
     # return {
     #     "location": {
@@ -146,6 +147,13 @@ def configure_traffic_manager(
         traffic_manager.random_right_lanechange_percentage(bot, random.randint(1, 60))
 
 
+def save_stacked_arrays(arrays: List[np.ndarray], output_file_path: Path):
+    concatenated_array = np.vstack(arrays)
+    with_npy = output_file_path.with_suffix(".npy")
+    np.save(with_npy, concatenated_array)
+    with_npy.rename(output_file_path)
+
+
 def combine_array_files(folder_path: Path, output_file_path: Path):
     """
     Concatenates numpy arrays from files in a given folder and saves the result.
@@ -174,40 +182,40 @@ def combine_array_files(folder_path: Path, output_file_path: Path):
     with_npy.rename(output_file_path)
 
 
+def carla_image_to_pil_image(image: carla.Image) -> Image.Image:
+    array = np.frombuffer(np.copy(image.raw_data), dtype=np.dtype("uint8"))
+    array = np.reshape(array, (image.height, image.width, 4))
+    return Image.fromarray(array[:, :, :3])
+
+
 def on_segment_end(context: AppContext, save_files_base_path: Path) -> None:
     # This function will take all the images and create a hevc video
-    print("Collecting files...")
-    # TODO: Create some code (somewhere) to ensure all files are created before running this
-    images_path = save_files_base_path / "images"
-    locations_path = save_files_base_path / "location"
-    rotations_path = save_files_base_path / "rotation"
-    frames_to_video(
-        images_path,
-        save_files_base_path / "video.hevc",
+    print("Saving video...")
+    save_files_base_path.mkdir(parents=True, exist_ok=True)
+    mp4_path = save_files_base_path / "video.mp4"
+
+    carla_images_to_mp4(
+        context.data_dict["images"],
+        mp4_path.as_posix(),
         context.frame_rate,
     )
+    mp4_to_hevc(mp4_path, save_files_base_path / "video.hevc")
+    mp4_path.unlink()  # Remove the mp4 file
+
+    # Saving positions and orientations
+
+    print("Saving global poses...")
     # This function will also take all the global poses and concatenate into a single file
     global_pose_path = save_files_base_path / "global_pose"
     global_pose_path.mkdir(parents=True, exist_ok=True)
-    combine_array_files(
-        locations_path,
+    save_stacked_arrays(
+        context.data_dict["location"],
         global_pose_path / "frame_positions",
     )
-    combine_array_files(
-        rotations_path,
+    save_stacked_arrays(
+        context.data_dict["rotation"],
         global_pose_path / "frame_orientations",
     )
-
-    if context.delete_intermediary_files:
-        for file in locations_path.iterdir():
-            file.unlink()
-        for file in rotations_path.iterdir():
-            file.unlink()
-        for file in images_path.iterdir():
-            file.unlink()
-        locations_path.rmdir()
-        rotations_path.rmdir()
-        images_path.rmdir()
 
 
 start_id = 0
@@ -220,11 +228,12 @@ def _generate_segment_id():
 
 
 def save_files(ctx: AppContext):
-    print("Save_data_files_run_count", frame_id)
-    # TODO: At this point, not all images are added to the data_dict
-    total_images = len(ctx.data_dict["images"])
-    print(f"Segment finished, saving {total_images} images (and corresponding data)")
-    return ctx.data_dict
+    pass
+    # print("Save_data_files_run_count", frame_id)
+    # # TODO: At this point, not all images are added to the data_dict
+    # total_images = len(ctx.data_dict["images"])
+    # print(f"Segment finished, saving {total_images} images (and corresponding data)")
+    # return ctx.data_dict
 
 
 def generate_stroll_segment():
@@ -244,7 +253,7 @@ def generate_stroll_segment():
                 update_vehicle_lights_task,
             ],
             "options": {
-                "on_finish_save_files": save_files,
+                # "on_finish_save_files": save_files,
                 "on_segment_end": on_segment_end,
             },
         }
@@ -304,6 +313,7 @@ def create_batch(map: str, batch_path: str):
         configure_traffic_lights(world)
 
         # client.get_trafficmanager().set_global_distance_to_leading_vehicle()
+        data_dict: DataDict = {"location": [], "rotation": [], "images": []}
 
         context = AppContext(
             client=client,
@@ -313,7 +323,7 @@ def create_batch(map: str, batch_path: str):
             actor_map={"vehicles": vehicle_bots, "walkers": walker_bots},
             ego_vehicle=ego_vehicle,
             frame_rate=settings.frame_rate,
-            data_dict=dict(location={}, rotation={}, images={}),
+            data_dict=data_dict,
             # folder_base_path=settings.folder_base_path,
             # images_intermediary_folder=settings.images_intermediary_folder,
             # global_pose_path=settings.global_pose_path,
