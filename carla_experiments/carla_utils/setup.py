@@ -1,13 +1,13 @@
 import sys
 import time
 from functools import wraps
-from glob import glob
 from pathlib import Path
 from queue import Empty, Queue
 from typing import Any, Callable, Dict, List, Mapping, Optional, Type, TypeVar, cast
 
 import carla
 import numpy as np
+from PIL import Image
 
 from carla_experiments.carla_utils.constants import AttributeDefaults, SensorBlueprints
 from carla_experiments.carla_utils.spawn import spawn_sensor
@@ -199,6 +199,12 @@ def game_loop_segment(
     save_files_base_path: TSaveFileBasePath = None,
     cleanup_actors: bool = False,
 ):
+    print("Preparing segment in loop")
+    for _ in range(100):
+        _get_sensor_data_map(context)
+        context.client.get_world().tick()
+        time.sleep(0.01)
+    print("Starting segment in loop")
     frames = 0
     while True:
         try:  # in case of a crash, try to recover and continue
@@ -210,7 +216,7 @@ def game_loop_segment(
                 save_items = task(context, sensor_data_map)  # type: ignore
                 if save_items is not None and save_files_base_path is not None:
                     save_items_to_file(save_files_base_path, save_items)
-            time.sleep(0.01)
+            # time.sleep(0.01)
             context.client.get_world().tick()
             frames += 1
         except KeyboardInterrupt:
@@ -253,6 +259,8 @@ def save_items_to_file(base_path: Path, items: SaveItems):
             if isinstance(value, dict):
                 path_to_save.mkdir(parents=True, exist_ok=True)
                 item_dicts.append((path_to_save, value))
+            elif isinstance(value, Image.Image):
+                value.save(path_to_save.as_posix())
             elif isinstance(value, np.ndarray):
                 np.save(path_to_save, value)
                 files.append(path_to_save)
@@ -344,6 +352,13 @@ def segment(
         @wraps(func)
         def inner(context: TContext, batch_base_path: Path) -> None:
             segment_result = func(context)
+            # Tick something to start the drive
+            # print("Preparing to start segment...")
+            # time.sleep(1)
+            # for _ in range(100):
+            #     context.client.get_world().tick()
+            #     time.sleep(0.01)
+            print("Starting segment")
             tasks = segment_result["tasks"]
             optionals = segment_result["options"]
             segment_path = _flexible_path_to_path(segment_base_folder)

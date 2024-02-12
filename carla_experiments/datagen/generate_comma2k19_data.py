@@ -1,5 +1,6 @@
 import os
 import random
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import List, Optional, Tuple, TypedDict
 import carla
 import click
 import numpy as np
+import scipy as sp
 from PIL import Image
 
 from carla_experiments.carla_utils.constants import SensorBlueprints
@@ -27,10 +29,10 @@ from carla_experiments.carla_utils.spawn import (
 )
 from carla_experiments.carla_utils.types_carla_utils import BatchResult, SegmentResult
 from carla_experiments.datagen.utils import (
-    carla_images_to_mp4,
     carla_location_to_ecef,
     euler_to_quaternion2,
     mp4_to_hevc,
+    pil_images_to_mp4,
 )
 
 
@@ -61,7 +63,7 @@ class AppSettings:
 class DataDict(TypedDict):
     location: List[np.ndarray]
     rotation: List[np.ndarray]
-    images: List[carla.Image]
+    images: List[Image.Image]
 
 
 @dataclass
@@ -78,7 +80,12 @@ def update_vehicle_lights_task(
         traffic_manager.update_vehicle_lights(vehicle, True)
 
 
+frame = 0
+
+
 def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
+    global frame
+    frame += 1
     front_image = sensor_data_map["front_camera"]
     # radar_data = parse_radar_data(sensor_data_map["radar"])
     # imu_data = parse_imu_data(sensor_data_map["imu"])
@@ -95,19 +102,21 @@ def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
     # rotation_np = np.array([rotation.pitch, rotation.yaw, rotation.roll])
     # frame = _generate_frame_id()
     # print(f"before add [frame {frame}]", len(context.data_dict["images"]))
-    context.data_dict["images"].append(front_image)
+    # Have to flip the image because the camera is mirrored in the sim
+    image = carla_image_to_pil_image(front_image).transpose(Image.FLIP_LEFT_RIGHT)
+    context.data_dict["images"].append(image)
     context.data_dict["location"].append(location_np)
     context.data_dict["rotation"].append(rotation_np)
     # print(f"after add [frame {frame}]", len(context.data_dict["images"]))
     # return {
     #     "location": {
-    #         frame: location_np,
+    #         str(frame): location_np,
     #     },
     #     "rotation": {
-    #         frame: roatation_np,
+    #         str(frame): rotation_np,
     #     },
     #     "images": {
-    #         frame: front_image,
+    #         str(frame): front_image,
     #     },
     # }
 
@@ -184,8 +193,9 @@ def combine_array_files(folder_path: Path, output_file_path: Path):
 
 def carla_image_to_pil_image(image: carla.Image) -> Image.Image:
     array = np.frombuffer(np.copy(image.raw_data), dtype=np.dtype("uint8"))
-    array = np.reshape(array, (image.height, image.width, 4))
-    return Image.fromarray(array[:, :, :3])
+    array = np.reshape(array, (image.height, image.width, 4))  # to BGRA image
+    array = array[:, :, :3][:, :, ::-1]  # Convert to RGB
+    return Image.fromarray(array)
 
 
 def on_segment_end(context: AppContext, save_files_base_path: Path) -> None:
@@ -194,7 +204,7 @@ def on_segment_end(context: AppContext, save_files_base_path: Path) -> None:
     save_files_base_path.mkdir(parents=True, exist_ok=True)
     mp4_path = save_files_base_path / "video.mp4"
 
-    carla_images_to_mp4(
+    pil_images_to_mp4(
         context.data_dict["images"],
         mp4_path.as_posix(),
         context.frame_rate,
@@ -243,8 +253,13 @@ def generate_stroll_segment():
     frame_duration = 20 * 60
 
     def stroll_segment(context: AppContext) -> SegmentResult:
-        spawn_point = random.choice(context.map.get_spawn_points())
+        print("Segment setting spawn point")
+        spawn_point = context.map.get_spawn_points()[10]
         context.ego_vehicle.set_transform(spawn_point)
+        print("Done setting spawn point")
+        context.client.get_world().get_spectator().set_location(
+            context.ego_vehicle.get_transform().location + carla.Location(z=2)
+        )
 
         return {
             "tasks": [
@@ -348,7 +363,8 @@ def create_batch(map: str, batch_path: str):
 @click.option("--root-folder", type=str, default=None)
 def main(root_folder: Optional[str]):
     # Comma2k19 called this each batch by the date
-    batch1 = create_batch("Town01", "batch1")
+    # TODO: Change back to Town01
+    batch1 = create_batch("Town04", "batch1")
     batch2 = create_batch("Town02", "batch2")
     batch3 = create_batch("Town03", "batch3")
     batch4 = create_batch("Town04", "batch4")

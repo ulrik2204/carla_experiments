@@ -23,6 +23,7 @@ from typing import (
 
 import carla
 import numpy as np
+from PIL import Image
 
 
 class Constant:
@@ -84,11 +85,7 @@ class BatchContext(ABC, Generic[TSensorMap, TActorMap]):
 TContext = TypeVar("TContext", bound=BatchContext)
 TSensorDataMap = TypeVar("TSensorDataMap", bound=Mapping[str, Any])
 
-SaveItemValue = Union[
-    Dict[str, "SaveItemValue"],
-    np.ndarray,
-    carla.Image,
-]
+SaveItemValue = Union[Dict[str, "SaveItemValue"], np.ndarray, carla.Image, Image.Image]
 SaveItems = Dict[str, SaveItemValue]
 
 

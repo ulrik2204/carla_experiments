@@ -1,6 +1,5 @@
 import os
 import re
-from email.mime import image
 from pathlib import Path
 from typing import List
 
@@ -9,23 +8,26 @@ import cv2
 import ffmpeg
 import numpy as np
 import pymap3d as pm
+from PIL import Image
 from scipy.spatial.transform import Rotation as R
 
 
-def carla_images_to_mp4(carla_images: List[carla.Image], output_file: str, fps: int):
+def pil_images_to_mp4(images: List[Image.Image], output_file: str, fps: int):
 
     # Convert the first image to set the video properties
-    first_image = carla_image_to_bgr_array(carla_images[0])
-    height, width, _ = first_image.shape
+    first_image = images[0]
+    height = first_image.height
+    width = first_image.width
 
     # Initialize the VideoWriter object
     fourcc = cv2.VideoWriter.fourcc(*"mp4v")  # 'mp4v' for .mp4 files
     video = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
 
     # Process each Carla image
-    for carla_image in carla_images:
-        frame = carla_image_to_bgr_array(carla_image)
-        video.write(frame)  # Expects bgr format
+    for item_image in images:
+        frame = np.array(item_image)
+        converted_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        video.write(converted_frame)  # Expects bgr format
 
     # Release the VideoWriter
     video.release()
@@ -179,7 +181,6 @@ def euler_to_quaternion2(map: carla.Map, rotation: carla.Rotation):
     return np.array([w, x, y, z])
 
 
-# HERE: This is wrong for some reason
 def carla_location_to_ecef2(map: carla.Map, location: carla.Location):
     origin_geolocation = map.transform_to_geolocation(carla.Location(0, 0, 0))
     lat0 = np.radians(origin_geolocation.latitude)
