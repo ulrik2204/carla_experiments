@@ -277,11 +277,15 @@ def create_dataset(
     batches: List[DecoratedBatch[TSettings]],
     base_folder: FlexiblePath,
     settings: TSettings,
+    on_batch_end: Optional[Callable[[], None]] = None,
+    on_segment_end: Optional[Callable[[], None]] = None,
 ):
     # This function is used to create a dataset from a list of batches
     base_path = _flexible_path_to_path(base_folder)
     for batch in batches:
-        batch(base_path, settings)
+        batch(base_path, settings, on_segment_end=on_segment_end)
+        if on_batch_end is not None:
+            on_batch_end()
 
 
 def batch(batch_folder: FlexiblePath):
@@ -300,12 +304,18 @@ def batch(batch_folder: FlexiblePath):
         # This is a function to also be able to group the data generation into batches
         # Each batch is a collection of segments with certain world settings.
         @wraps(func)
-        def inner(base_path: Path, settings: TSettings) -> None:
+        def inner(
+            base_path: Path,
+            settings: TSettings,
+            on_segment_end: Optional[Callable[[], None]] = None,
+        ) -> None:
             batch_result = func(settings)
             batch_path = _flexible_path_to_path(batch_folder)
             full_base_path = base_path / batch_path
             for segment in batch_result["segments"]:
                 segment(batch_result["context"], full_base_path)
+                if on_segment_end is not None:
+                    on_segment_end()
             optionals = batch_result["options"]
             on_exit = optionals["on_batch_end"] if "on_batch_end" in optionals else None
             if on_exit:
@@ -352,12 +362,6 @@ def segment(
         @wraps(func)
         def inner(context: TContext, batch_base_path: Path) -> None:
             segment_result = func(context)
-            # Tick something to start the drive
-            # print("Preparing to start segment...")
-            # time.sleep(1)
-            # for _ in range(100):
-            #     context.client.get_world().tick()
-            #     time.sleep(0.01)
             print("Starting segment")
             tasks = segment_result["tasks"]
             optionals = segment_result["options"]

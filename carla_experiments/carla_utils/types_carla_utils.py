@@ -152,4 +152,9 @@ class Batch(Protocol, Generic[TSettingsContra]):
 
 
 class DecoratedBatch(Protocol, Generic[TSettingsContra]):
-    def __call__(self, base_path: Path, settings: TSettingsContra) -> None: ...
+    def __call__(
+        self,
+        base_path: Path,
+        settings: TSettingsContra,
+        on_segment_end: Optional[Callable[[], None]] = None,
+    ) -> None: ...

@@ -1,16 +1,14 @@
 import os
 import random
-import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from queue import Queue
-from typing import List, Optional, Tuple, TypedDict
+from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
 import carla
 import click
 import numpy as np
-import scipy as sp
 from PIL import Image
 
 from carla_experiments.carla_utils.constants import SensorBlueprints
@@ -27,13 +25,46 @@ from carla_experiments.carla_utils.spawn import (
     spawn_vehicle_bots,
     spawn_walker_bots,
 )
-from carla_experiments.carla_utils.types_carla_utils import BatchResult, SegmentResult
+from carla_experiments.carla_utils.types_carla_utils import (
+    BatchResult,
+    DecoratedBatch,
+    SegmentResult,
+)
 from carla_experiments.datagen.utils import (
     carla_location_to_ecef,
     euler_to_quaternion2,
     mp4_to_hevc,
     pil_images_to_mp4,
 )
+
+
+class ProgressHandler:
+
+    def __init__(self, filepath: str, tasklist: List[str]) -> None:
+        if os.path.exists(filepath):
+            raise ValueError(f"File {filepath} already exists")
+        # Progress denotes the index of the last completed task
+        self.progress = -1
+        self.tasklist = tasklist
+        self.filepath = filepath
+        if os.path.exists(filepath):
+            print("File exists resuming from file.")
+            with open(filepath, "r") as f:
+                index = len(f.readlines())
+                if tasklist[index] == f.readlines()[-1]:
+                    self.progress = index
+                else:
+                    raise ValueError(
+                        f"Tasks in file do not match tasklist. {tasklist[index]} != {f.readlines()[-1]}"
+                    )
+
+    def get_progress(self) -> int:
+        return self.progress
+
+    def update_progress(self) -> None:
+        self.progress += 1
+        with open(self.filepath, "a") as f:
+            f.write(f"{self.tasklist[self.progress]}\n")
 
 
 class AppActorMap(TypedDict):
@@ -52,12 +83,6 @@ class AppSensorDataMap(TypedDict):
 @dataclass
 class AppSettings:
     frame_rate: int
-    # folder_base_path: Path
-    # images_intermediary_folder: Path
-    # global_pose_path: Path
-    # locations_intermediary_folder: Path
-    # rotations_intermediary_folder: Path
-    delete_intermediary_files: bool
 
 
 class DataDict(TypedDict):
@@ -80,12 +105,7 @@ def update_vehicle_lights_task(
         traffic_manager.update_vehicle_lights(vehicle, True)
 
 
-frame = 0
-
-
 def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
-    global frame
-    frame += 1
     front_image = sensor_data_map["front_camera"]
     # radar_data = parse_radar_data(sensor_data_map["radar"])
     # imu_data = parse_imu_data(sensor_data_map["imu"])
@@ -102,8 +122,7 @@ def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
     # rotation_np = np.array([rotation.pitch, rotation.yaw, rotation.roll])
     # frame = _generate_frame_id()
     # print(f"before add [frame {frame}]", len(context.data_dict["images"]))
-    # Have to flip the image because the camera is mirrored in the sim
-    image = carla_image_to_pil_image(front_image).transpose(Image.FLIP_LEFT_RIGHT)
+    image = carla_image_to_pil_image(front_image)  # .transpose(Image.FLIP_LEFT_RIGHT)
     context.data_dict["images"].append(image)
     context.data_dict["location"].append(location_np)
     context.data_dict["rotation"].append(rotation_np)
@@ -226,6 +245,8 @@ def on_segment_end(context: AppContext, save_files_base_path: Path) -> None:
         context.data_dict["rotation"],
         global_pose_path / "frame_orientations",
     )
+    # Resetting the data_dict after each segment
+    context.data_dict = {"location": [], "rotation": [], "images": []}
 
 
 start_id = 0
@@ -237,15 +258,6 @@ def _generate_segment_id():
     return str(start_id)
 
 
-def save_files(ctx: AppContext):
-    pass
-    # print("Save_data_files_run_count", frame_id)
-    # # TODO: At this point, not all images are added to the data_dict
-    # total_images = len(ctx.data_dict["images"])
-    # print(f"Segment finished, saving {total_images} images (and corresponding data)")
-    # return ctx.data_dict
-
-
 def generate_stroll_segment():
     segment_id = _generate_segment_id()
     print("segment_id: ", segment_id)
@@ -254,7 +266,7 @@ def generate_stroll_segment():
 
     def stroll_segment(context: AppContext) -> SegmentResult:
         print("Segment setting spawn point")
-        spawn_point = context.map.get_spawn_points()[10]
+        spawn_point = random.choice(context.map.get_spawn_points())
         context.ego_vehicle.set_transform(spawn_point)
         print("Done setting spawn point")
         context.client.get_world().get_spectator().set_location(
@@ -268,7 +280,6 @@ def generate_stroll_segment():
                 update_vehicle_lights_task,
             ],
             "options": {
-                # "on_finish_save_files": save_files,
                 "on_segment_end": on_segment_end,
             },
         }
@@ -339,17 +350,11 @@ def create_batch(map: str, batch_path: str):
             ego_vehicle=ego_vehicle,
             frame_rate=settings.frame_rate,
             data_dict=data_dict,
-            # folder_base_path=settings.folder_base_path,
-            # images_intermediary_folder=settings.images_intermediary_folder,
-            # global_pose_path=settings.global_pose_path,
-            # locations_intermediary_folder=settings.locations_intermediary_folder,
-            # rotations_intermediary_folder=settings.rotations_intermediary_folder,
-            delete_intermediary_files=True,
         )
         print("App env: ", context)
         # print("Starting game loop")
         # TODO: Handle to not stop actors if it is a segment, but only at the end of a batch
-        generated_segments = [generate_stroll_segment() for _ in range(1)]
+        generated_segments = [generate_stroll_segment() for _ in range(10)]
         return {
             "context": context,
             "segments": generated_segments,
@@ -359,29 +364,64 @@ def create_batch(map: str, batch_path: str):
     return batch(batch_path)(first_batch)
 
 
+def choose_chunks(
+    all_chunks: Dict[str, List[Tuple[str, DecoratedBatch]]],
+    tasklist: List[str],
+    progress: int,
+):
+    if progress == len(tasklist) - 1:
+        return {}
+    if progress == -1:
+        return all_chunks
+    chunks: Dict[str, List[Tuple[str, DecoratedBatch]]] = {}
+    rest_index = progress + 1
+    rest_tasks = tasklist[rest_index:]
+    for chunk_name, batches in all_chunks.items():
+        for batch_name, batch_fn in batches:
+            if batch_name in rest_tasks:
+                if chunk_name not in chunks:
+                    chunks[chunk_name] = []
+                chunks[chunk_name].append((batch_name, batch_fn))
+    return chunks
+
+
 @click.command()
 @click.option("--root-folder", type=str, default=None)
-def main(root_folder: Optional[str]):
+@click.option("--progress-file", type=str, default=None)
+def main(root_folder: Optional[str], progress_file: Optional[str]):
     # Comma2k19 called this each batch by the date
     # TODO: Change back to Town01
-    batch1 = create_batch("Town04", "batch1")
+    this_time = datetime.now().strftime("%m-%d_%H-%M")
+    tasklist = ["batch1", "batch2", "batch3", "batch4"]
+    batch1 = create_batch("Town01", "batch1")
     batch2 = create_batch("Town02", "batch2")
     batch3 = create_batch("Town03", "batch3")
     batch4 = create_batch("Town04", "batch4")
-    # chunks = {"Chunk_1": [batch1, batch2], "Chunk_2": [batch3, batch4]}
-    chunks = {"Chunk_1": [batch1]}
+    used_progress_file = (
+        progress_file if progress_file is not None else f"progress-{this_time}.txt"
+    )
+    progress_handler = ProgressHandler(used_progress_file, tasklist)
+    all_chunks = {
+        "Chunk_1": [("batch1", batch1), ("batch2", batch2)],
+        "Chunk_2": [("batch3", batch3), ("batch4", batch4)],
+    }
+    chunks = choose_chunks(all_chunks, tasklist, progress_handler.get_progress())
+    # chunks = {"Chunk_1": [batch1]}
     if root_folder is None:
         base_path = Path("./output") / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     else:
         base_path = Path(root_folder)
 
-    settings = AppSettings(
-        frame_rate=20,
-        delete_intermediary_files=True,
-    )
+    settings = AppSettings(frame_rate=20)
     for chunk, batches in chunks.items():
         print("--- Creating", chunk, "---")
-        create_dataset(batches, base_path / chunk, settings)
+        used_batches = [batch_fn for _, batch_fn in batches]
+        create_dataset(
+            used_batches,
+            base_path / chunk,
+            settings,
+            on_batch_end=progress_handler.update_progress,
+        )
 
 
 if __name__ == "__main__":

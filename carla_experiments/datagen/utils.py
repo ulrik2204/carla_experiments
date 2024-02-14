@@ -148,14 +148,6 @@ def euler_to_quaternion2(map: carla.Map, rotation: carla.Rotation):
     #     [0,               np.cos(lat0),                np.sin(lat0)             ]]).inv()
 
     # I think we should remove .inv() because I think original example was from ECEF to ENU
-    # TODO: Add conversion of alt0 as well (Ulrik)
-    r = R.from_matrix(
-        [
-            [-np.sin(lon0), -np.cos(lon0) * np.sin(lat0), np.cos(lon0) * np.cos(lat0)],
-            [np.cos(lon0), -np.sin(lon0) * np.sin(lat0), np.sin(lon0) * np.cos(lat0)],
-            [0, np.cos(lat0), np.sin(lat0)],
-        ]
-    )
     # https://carla.readthedocs.io/en/latest/python_api/#carlarotation
     # https://se.mathworks.com/help/uav/ug/coordinate-systems-for-unreal-engine-simulation-in-uav-toolbox.html
     # In carla
@@ -163,21 +155,33 @@ def euler_to_quaternion2(map: carla.Map, rotation: carla.Rotation):
     # yaw is rotation around the z-axis
     # roll is rotation around the x-axis
     # To adjust for the difference in coordinate systems, we need to negate pitch and yaw
-    x = np.radians(rotation.roll)
-    y = -np.radians(rotation.pitch)
-    z = -np.radians(rotation.yaw)
 
-    # Not tested
+    # STEP 1: Convert from Unreal coordinates (ESU, left handed) to ENU (right handed)
+    x = np.radians(rotation.roll)
+    y = -(np.radians(rotation.pitch) + np.pi)
+    z = -(np.radians(rotation.yaw) + np.pi)
     enu_rot = R.from_euler("xyz", (x, y, z), degrees=False)
-    ecef_rot = r.as_matrix() @ enu_rot.as_matrix()
+
+    # STEP 2: Convert from ENU to ECEF
+    r_enu_to_ecef = R.from_matrix(
+        [
+            [-np.sin(lon0), -np.cos(lon0) * np.sin(lat0), np.cos(lon0) * np.cos(lat0)],
+            [np.cos(lon0), -np.sin(lon0) * np.sin(lat0), np.sin(lon0) * np.cos(lat0)],
+            [0, np.cos(lat0), np.sin(lat0)],
+        ]
+    )
+
+    # enu_rot = R.from_euler("xyz", (x, y, z), degrees=False)
+    ecef_rot = r_enu_to_ecef * enu_rot
+
+    # STEP 3: Convert to quaternion
     # This returns the quaternion on the [x, y, z, w] format
-    ecef_orientation = R.from_matrix(ecef_rot).as_quat()
+    ecef_orientation = ecef_rot.as_quat()
     x = ecef_orientation[0]
     y = ecef_orientation[1]
     z = ecef_orientation[2]
     w = ecef_orientation[3]
 
-    # print(f"{ecef_orientation = }")
     return np.array([w, x, y, z])
 
 
