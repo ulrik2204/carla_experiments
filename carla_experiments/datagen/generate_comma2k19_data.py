@@ -258,7 +258,7 @@ def _generate_segment_id():
     return str(start_id)
 
 
-def generate_stroll_segment():
+def generate_stroll_segment(batch_segment_id: int):
     segment_id = _generate_segment_id()
     print("segment_id: ", segment_id)
     # 20 Hz for 60 seconds = 1200 frames
@@ -266,7 +266,8 @@ def generate_stroll_segment():
 
     def stroll_segment(context: AppContext) -> SegmentResult:
         print("Segment setting spawn point")
-        spawn_point = random.choice(context.map.get_spawn_points())
+        len_points = len(context.map.get_spawn_points())
+        spawn_point = context.map.get_spawn_points()[batch_segment_id % len_points]
         context.ego_vehicle.set_transform(spawn_point)
         print("Done setting spawn point")
         context.client.get_world().get_spectator().set_location(
@@ -353,8 +354,7 @@ def create_batch(map: str, batch_path: str):
         )
         print("App env: ", context)
         # print("Starting game loop")
-        # TODO: Handle to not stop actors if it is a segment, but only at the end of a batch
-        generated_segments = [generate_stroll_segment() for _ in range(10)]
+        generated_segments = [generate_stroll_segment(i) for i in range(200)]
         return {
             "context": context,
             "segments": generated_segments,
@@ -392,18 +392,47 @@ def main(root_folder: Optional[str], progress_file: Optional[str]):
     # Comma2k19 called this each batch by the date
     # TODO: Change back to Town01
     this_time = datetime.now().strftime("%m-%d_%H-%M")
-    tasklist = ["batch1", "batch2", "batch3", "batch4"]
+    tasklist = [
+        "batch1",
+        "batch2",
+        "batch3",
+        "batch4",
+        "batch5",
+        "batch6",
+        "batch7",
+        "batch8",
+        "batch9",
+        "batch10",
+    ]
     batch1 = create_batch("Town01", "batch1")
     batch2 = create_batch("Town02", "batch2")
     batch3 = create_batch("Town03", "batch3")
     batch4 = create_batch("Town04", "batch4")
+    batch5 = create_batch("Town06", "batch5")
+    batch6 = create_batch("Town07", "batch6")
+    batch7 = create_batch("Town10HD", "batch7")
+    batch8 = create_batch("Town04", "batch8")
+    batch9 = create_batch("Town06", "batch9")
+    batch10 = create_batch("Town10HD", "batch10")
     used_progress_file = (
         progress_file if progress_file is not None else f"progress-{this_time}.txt"
     )
     progress_handler = ProgressHandler(used_progress_file, tasklist)
     all_chunks = {
-        "Chunk_1": [("batch1", batch1), ("batch2", batch2)],
-        "Chunk_2": [("batch3", batch3), ("batch4", batch4)],
+        "Chunk_1": [
+            ("batch1", batch1),
+            ("batch2", batch2),
+            ("batch3", batch3),
+            ("batch4", batch4),
+            ("batch5", batch5),
+        ],
+        "Chunk_2": [
+            ("batch6", batch6),
+            ("batch7", batch7),
+            ("batch8", batch8),
+            ("batch9", batch9),
+            ("batch10", batch10),
+        ],
     }
     chunks = choose_chunks(all_chunks, tasklist, progress_handler.get_progress())
     # chunks = {"Chunk_1": [batch1]}

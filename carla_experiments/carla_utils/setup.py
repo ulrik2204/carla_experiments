@@ -3,26 +3,26 @@ import time
 from functools import wraps
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Any, Callable, Dict, List, Mapping, Optional, Type, TypeVar, cast
+from typing import (Any, Callable, Dict, List, Mapping, Optional, Type,
+                    TypeVar, Union, cast)
 
 import carla
 import numpy as np
 from PIL import Image
 
-from carla_experiments.carla_utils.constants import AttributeDefaults, SensorBlueprints
+from carla_experiments.carla_utils.constants import (AttributeDefaults,
+                                                     SensorBlueprints)
 from carla_experiments.carla_utils.spawn import spawn_sensor
-from carla_experiments.carla_utils.types_carla_utils import (
-    Batch,
-    BatchContext,
-    CarlaTask,
-    DecoratedBatch,
-    DecoratedSegment,
-    FlexiblePath,
-    SaveItems,
-    Segment,
-    SensorBlueprint,
-    SensorConfig,
-)
+from carla_experiments.carla_utils.types_carla_utils import (Batch,
+                                                             BatchContext,
+                                                             CarlaTask,
+                                                             DecoratedBatch,
+                                                             DecoratedSegment,
+                                                             FlexiblePath,
+                                                             SaveItems,
+                                                             Segment,
+                                                             SensorBlueprint,
+                                                             SensorConfig)
 
 TSensorMap = TypeVar("TSensorMap", bound=Mapping[str, Any])
 TSensorDataMap = TypeVar("TSensorDataMap", bound=Mapping[str, Any])
@@ -187,8 +187,8 @@ def _stop_loop(
         on_finished(context, save_files_base_path)
     if cleanup_actors:
         print("Cleaning up actors...")
-        stop_actor(context.actor_map)
-        stop_actor(context.sensor_map)
+        stop_actors(context.actor_map)
+        stop_actors(context.sensor_map)
 
 
 def game_loop_segment(
@@ -224,7 +224,7 @@ def game_loop_segment(
             sys.exit()
 
 
-def stop_actor(actor):
+def stop_actors(actor: Union[carla.Actor, List[carla.Actor], Dict[str, carla.Actor]]):
     if isinstance(actor, carla.Actor):
         actor.destroy()
         del actor
@@ -232,15 +232,15 @@ def stop_actor(actor):
         actor.stop()
         actor.destroy()
         del actor
-    elif isinstance(actor, list) or isinstance(actor, tuple):
-        for a in actor:
-            stop_actor(a)
-            if isinstance(actor, list):
-                actor.clear()
     elif isinstance(actor, dict):
         for a in actor.values():
-            stop_actor(a)
+            stop_actors(a)
         actor.clear()
+    elif isinstance(actor, list) or isinstance(actor, tuple):
+        for a in actor:
+            stop_actors(a)
+        if isinstance(actor, list):
+            actor.clear()
     else:
         raise ValueError(f"Unsupposed actor map type {type(actor)}")
 
@@ -322,8 +322,8 @@ def batch(batch_folder: FlexiblePath):
                 on_exit(batch_result["context"])
             print("Cleaning up actors...")
             context = batch_result["context"]
-            stop_actor(context.actor_map)
-            stop_actor(context.sensor_map)
+            stop_actors(context.actor_map)
+            stop_actors(context.sensor_map)
 
         return inner
 
@@ -332,7 +332,7 @@ def batch(batch_folder: FlexiblePath):
 
 def segment(
     frame_duration: int, segment_base_folder: Optional[FlexiblePath] = None
-) -> Callable[[Segment[TContext, TSensorDataMap]], DecoratedSegment[TContext]]:  # type: ignore
+) -> Callable[[Segment[TContext, Any]], DecoratedSegment[TContext]]:
     """Decorator for a segment function. A segment function is a function that
     creates a small segment of data, e.g. 60 seconds of driving. It is provided the
     context by the batch, but the only thing it should change should be the things
@@ -400,3 +400,11 @@ def segment(
         return inner
 
     return decorator
+
+
+def create_segment(
+    frame_duration: int,
+    segment_base_folder: Optional[FlexiblePath],
+    segment_config: Segment[TContext, TSensorDataMap],
+) -> DecoratedSegment[TContext]:
+    return segment(frame_duration, segment_base_folder)(segment_config)

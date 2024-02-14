@@ -18,6 +18,8 @@ class CarlaContext:
 
 def initialize_carla():
     client = carla.Client("localhost", 2000)
+    client.set_timeout(30.0)
+    client.load_world("Town07")
     world = client.get_world()
     settings = world.get_settings()
     settings.synchronous_mode = True  # Enables synchronous mode
