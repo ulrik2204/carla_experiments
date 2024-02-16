@@ -27,11 +27,8 @@ def main(root_folder: str, comma2k19_folder: str):
     random.shuffle(sequences)
 
     num_seqs = len(sequences)
-    print(num_seqs, "sequences")
 
     num_train = int(0.8 * num_seqs)
-    print("num_train", num_train)
-    print("num_seqs", num_seqs)
 
     with open(root_folder + "/comma2k19_train.txt", "w") as f:
         f.writelines(
@@ -54,13 +51,9 @@ def main(root_folder: str, comma2k19_folder: str):
     ]
     print("seq", sequences)
     seq_names = list(set([_extract_sequence_id(seq) for seq in sequences]))
-    print("seq_names", seq_names)
     num_seqs = len(seq_names)
-    print("num_seqs", num_seqs)
     num_train = int(0.8 * num_seqs)
-    print("num_train", num_train)
     train_seq_names = seq_names[:num_train]
-    print("train_seq_names", train_seq_names)
     with open(root_folder + "/comma2k19_train_non_overlap.txt", "w") as f:
         f.writelines(
             seq + "\n"
@@ -73,6 +66,8 @@ def main(root_folder: str, comma2k19_folder: str):
             for seq in sequences
             if _extract_sequence_id(seq) not in train_seq_names
         )
+
+    print("Done generating compilation files")
 
 
 if __name__ == "__main__":

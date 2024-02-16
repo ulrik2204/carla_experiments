@@ -16,6 +16,8 @@ from carla_experiments.carla_utils.setup import (
     BatchContext,
     batch,
     create_dataset,
+    create_segment,
+    generate_segment_dataset,
     segment,
     setup_carla_client,
     setup_sensors,
@@ -28,6 +30,8 @@ from carla_experiments.carla_utils.spawn import (
 from carla_experiments.carla_utils.types_carla_utils import (
     BatchResult,
     DecoratedBatch,
+    FullSegment,
+    FullSegmentConfigResult,
     SegmentResult,
 )
 from carla_experiments.datagen.utils import (
@@ -41,21 +45,23 @@ from carla_experiments.datagen.utils import (
 class ProgressHandler:
 
     def __init__(self, filepath: str, tasklist: List[str]) -> None:
-        if os.path.exists(filepath):
-            raise ValueError(f"File {filepath} already exists")
         # Progress denotes the index of the last completed task
         self.progress = -1
         self.tasklist = tasklist
         self.filepath = filepath
         if os.path.exists(filepath):
             print("File exists resuming from file.")
+            print("filepath", filepath)
             with open(filepath, "r") as f:
-                index = len(f.readlines())
-                if tasklist[index] == f.readlines()[-1]:
+                els = f.readlines()
+                index = len(els) - 1
+                task = tasklist[index].strip()
+                el = els[index].strip()
+                if task == el:
                     self.progress = index
                 else:
                     raise ValueError(
-                        f"Tasks in file do not match tasklist. {tasklist[index]} != {f.readlines()[-1]}"
+                        f"Tasks in file do not match tasklist. {task} != {el}"
                     )
 
     def get_progress(self) -> int:
@@ -83,6 +89,7 @@ class AppSensorDataMap(TypedDict):
 @dataclass
 class AppSettings:
     frame_rate: int
+    client: carla.Client
 
 
 class DataDict(TypedDict):
@@ -148,7 +155,7 @@ def spectator_follow_ego_vehicle_task(
     spectator = context.client.get_world().get_spectator()
     spectator_transform = spectator.get_transform()
     spectator_transform.location = vehicle_transform.location + carla.Location(z=2)
-    spectator_transform.rotation.yaw = vehicle_transform.rotation.yaw
+    spectator_transform.rotation = vehicle_transform.rotation
     spectator.set_transform(spectator_transform)
 
 
@@ -158,7 +165,7 @@ def configure_traffic_manager(
     vehicle_bots: List[carla.Vehicle],
 ) -> None:
     traffic_manager.set_random_device_seed(42)
-    traffic_manager.set_global_distance_to_leading_vehicle(2.5)
+    # traffic_manager.set_global_distance_to_leading_vehicle(2.5)
     traffic_manager.set_respawn_dormant_vehicles(True)
     # traffic_manager.set_desired_speed(ego_vehicle, 50 / 3.6)  # 50 km/h
     # traffic_manager.set_hybrid_physics_mode(True)
@@ -204,7 +211,6 @@ def combine_array_files(folder_path: Path, output_file_path: Path):
     concatenated_array = np.vstack(arrays)
 
     # Save the concatenated array
-    print("Saving concatenated array to: ", output_file_path)
     with_npy = output_file_path.with_suffix(".npy")
     np.save(with_npy, concatenated_array)
     with_npy.rename(output_file_path)
@@ -249,47 +255,6 @@ def on_segment_end(context: AppContext, save_files_base_path: Path) -> None:
     context.data_dict = {"location": [], "rotation": [], "images": []}
 
 
-start_id = 0
-
-
-def _generate_segment_id():
-    global start_id
-    start_id += 1
-    return str(start_id)
-
-
-def generate_stroll_segment(batch_segment_id: int):
-    segment_id = _generate_segment_id()
-    print("segment_id: ", segment_id)
-    # 20 Hz for 60 seconds = 1200 frames
-    frame_duration = 20 * 60
-
-    def stroll_segment(context: AppContext) -> SegmentResult:
-        print("Segment setting spawn point")
-        len_points = len(context.map.get_spawn_points())
-        spawn_point = context.map.get_spawn_points()[batch_segment_id % len_points]
-        context.ego_vehicle.set_transform(spawn_point)
-        print("Done setting spawn point")
-        context.client.get_world().get_spectator().set_location(
-            context.ego_vehicle.get_transform().location + carla.Location(z=2)
-        )
-
-        return {
-            "tasks": [
-                spectator_follow_ego_vehicle_task,
-                save_data_task,
-                update_vehicle_lights_task,
-            ],
-            "options": {
-                "on_segment_end": on_segment_end,
-            },
-        }
-
-    return segment(frame_duration=frame_duration, segment_base_folder=segment_id)(
-        stroll_segment
-    )
-
-
 def configure_traffic_lights(world: carla.World):
     actors = world.get_actors().filter("traffic.traffic_light")
     for actor in actors:
@@ -300,17 +265,35 @@ def configure_traffic_lights(world: carla.World):
             actor.set_red_time(5)
 
 
-def create_batch(map: str, batch_path: str):
-    def first_batch(settings: AppSettings) -> BatchResult:
-        # save_folder,
+def generate_simple_segment(map: str, segment_path: Path, spawn_point_idx: int):
+    def simple_segment_config(settings: AppSettings) -> FullSegmentConfigResult:
 
-        client = setup_carla_client(map, frame_rate=settings.frame_rate)
         # client = setup_carla_client("Town10HD")
+        same_map = True
+        client = settings.client
+        if map not in client.get_world().get_map().name:
+            client.load_world(map, reset_settings=False)
+            same_map = False
         world = client.get_world()
+        world.tick()
         carla_map = world.get_map()
-        ego_vehicle = spawn_ego_vehicle(
-            world, autopilot=True, spawn_point=carla_map.get_spawn_points()[0]
+        spawn_points = carla_map.get_spawn_points()
+        len_spawn_points = len(spawn_points)
+        spawn_point_index = spawn_point_idx % len_spawn_points
+        used_spawn_point = spawn_points[spawn_point_index]
+        print("Generating in map", map)
+        print(
+            "Using spawn point",
+            spawn_point_index,
+            "of ",
+            len_spawn_points,
+            "with coords",
+            f"({used_spawn_point.location.x}, {used_spawn_point.location.y}, {used_spawn_point.location.z})",
+            "and rotation",
+            f"({used_spawn_point.rotation.roll}, {used_spawn_point.rotation.pitch}, {used_spawn_point.rotation.yaw})",
         )
+        spawn_point = spawn_points[spawn_point_index]
+        ego_vehicle = spawn_ego_vehicle(world, autopilot=True, spawn_point=spawn_point)
         world.set_pedestrians_cross_factor(0.1)
         sensor_data_queue = Queue()
         # TODO: Check sensor positions
@@ -329,12 +312,8 @@ def create_batch(map: str, batch_path: str):
             },
         )
 
-        print("spawning vehicles")
         vehicle_bots = spawn_vehicle_bots(world, 10)
-        print("spawning bots")
-        # TODO: Spawning walkers is not working, check generate_traffic example
         walker_bots = spawn_walker_bots(world, 15)
-        print("configuring traffic manager")
         traffic_manager = client.get_trafficmanager()
         configure_traffic_manager(traffic_manager, ego_vehicle, vehicle_bots)
         configure_traffic_lights(world)
@@ -352,37 +331,91 @@ def create_batch(map: str, batch_path: str):
             frame_rate=settings.frame_rate,
             data_dict=data_dict,
         )
-        print("App env: ", context)
-        # print("Starting game loop")
-        generated_segments = [generate_stroll_segment(i) for i in range(200)]
         return {
             "context": context,
-            "segments": generated_segments,
-            "options": {},
+            "tasks": [
+                spectator_follow_ego_vehicle_task,
+                save_data_task,
+                update_vehicle_lights_task,
+            ],
+            "options": {
+                "on_segment_end": on_segment_end,
+                "cleanup_actors": True,
+            },
         }
 
-    return batch(batch_path)(first_batch)
+    frame_duration = 20 * 60  # 20 Hz for 60 seconds = 1200 frames
+    return create_segment(frame_duration, segment_path, simple_segment_config)
 
 
-def choose_chunks(
-    all_chunks: Dict[str, List[Tuple[str, DecoratedBatch]]],
-    tasklist: List[str],
-    progress: int,
-):
-    if progress == len(tasklist) - 1:
-        return {}
+def get_some(i, j, k):
+    return f"Chunk_{i}/Batch_{j}/Segment_{k}"
+
+
+def choose_segments(
+    all_segments: List[FullSegment], progress: int
+) -> List[FullSegment]:
+    if progress == len(all_segments) - 1:
+        return []
     if progress == -1:
-        return all_chunks
-    chunks: Dict[str, List[Tuple[str, DecoratedBatch]]] = {}
-    rest_index = progress + 1
-    rest_tasks = tasklist[rest_index:]
-    for chunk_name, batches in all_chunks.items():
-        for batch_name, batch_fn in batches:
-            if batch_name in rest_tasks:
-                if chunk_name not in chunks:
-                    chunks[chunk_name] = []
-                chunks[chunk_name].append((batch_name, batch_fn))
-    return chunks
+        return all_segments
+    rest_start_index = progress + 1
+    return all_segments[rest_start_index:]
+
+
+def create_all_segments(tasklist: List[str]):
+    town01_segments = [
+        generate_simple_segment("Town01", Path(item), i)
+        for i, item in enumerate(tasklist[:200], 1)
+    ]
+    town02_segments = [
+        generate_simple_segment("Town02", Path(item), i)
+        for i, item in enumerate(tasklist[201:400], 1)
+    ]
+    town03_segments = [
+        generate_simple_segment("Town03", Path(item), i)
+        for i, item in enumerate(tasklist[401:600], 1)
+    ]
+    town04_segments = [
+        generate_simple_segment("Town04", Path(item), i)
+        for i, item in enumerate(tasklist[601:800], 1)
+    ]
+    town06_segments = [
+        generate_simple_segment("Town06", Path(item), i)
+        for i, item in enumerate(tasklist[801:1000], 1)
+    ]
+    town07_segments = [
+        generate_simple_segment("Town07", Path(item), i)
+        for i, item in enumerate(tasklist[1000:1201], 1)
+    ]
+    town10_segments = [
+        generate_simple_segment("Town10HD", Path(item), i)
+        for i, item in enumerate(tasklist[1201:1400], 1)
+    ]
+    town042_segments = [
+        generate_simple_segment("Town04", Path(item), i)
+        for i, item in enumerate(tasklist[1400:1601], 1)
+    ]
+    town062_segments = [
+        generate_simple_segment("Town06", Path(item), i)
+        for i, item in enumerate(tasklist[1600:1801], 1)
+    ]
+    town072_segments = [
+        generate_simple_segment("Town07", Path(item), i)
+        for i, item in enumerate(tasklist[1801:], 1)
+    ]
+    return (
+        town01_segments
+        + town02_segments
+        + town03_segments
+        + town04_segments
+        + town06_segments
+        + town07_segments
+        + town10_segments
+        + town042_segments
+        + town062_segments
+        + town072_segments
+    )
 
 
 @click.command()
@@ -392,65 +425,29 @@ def main(root_folder: Optional[str], progress_file: Optional[str]):
     # Comma2k19 called this each batch by the date
     # TODO: Change back to Town01
     this_time = datetime.now().strftime("%m-%d_%H-%M")
-    tasklist = [
-        "batch1",
-        "batch2",
-        "batch3",
-        "batch4",
-        "batch5",
-        "batch6",
-        "batch7",
-        "batch8",
-        "batch9",
-        "batch10",
-    ]
-    batch1 = create_batch("Town01", "batch1")
-    batch2 = create_batch("Town02", "batch2")
-    batch3 = create_batch("Town03", "batch3")
-    batch4 = create_batch("Town04", "batch4")
-    batch5 = create_batch("Town06", "batch5")
-    batch6 = create_batch("Town07", "batch6")
-    batch7 = create_batch("Town10HD", "batch7")
-    batch8 = create_batch("Town04", "batch8")
-    batch9 = create_batch("Town06", "batch9")
-    batch10 = create_batch("Town10HD", "batch10")
     used_progress_file = (
         progress_file if progress_file is not None else f"progress-{this_time}.txt"
     )
-    progress_handler = ProgressHandler(used_progress_file, tasklist)
-    all_chunks = {
-        "Chunk_1": [
-            ("batch1", batch1),
-            ("batch2", batch2),
-            ("batch3", batch3),
-            ("batch4", batch4),
-            ("batch5", batch5),
-        ],
-        "Chunk_2": [
-            ("batch6", batch6),
-            ("batch7", batch7),
-            ("batch8", batch8),
-            ("batch9", batch9),
-            ("batch10", batch10),
-        ],
-    }
-    chunks = choose_chunks(all_chunks, tasklist, progress_handler.get_progress())
-    # chunks = {"Chunk_1": [batch1]}
     if root_folder is None:
         base_path = Path("./output") / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     else:
         base_path = Path(root_folder)
-
-    settings = AppSettings(frame_rate=20)
-    for chunk, batches in chunks.items():
-        print("--- Creating", chunk, "---")
-        used_batches = [batch_fn for _, batch_fn in batches]
-        create_dataset(
-            used_batches,
-            base_path / chunk,
-            settings,
-            on_batch_end=progress_handler.update_progress,
-        )
+    tasklist = [
+        (base_path / f"Chunk_{i//100 + 1}/Batch_{i//10 + 1}/Segment_{i}").as_posix()
+        for i in range(1, 2001)
+    ]
+    progress_handler = ProgressHandler(used_progress_file, tasklist)
+    all_segments = create_all_segments(tasklist)
+    chosen_segments = choose_segments(all_segments, progress_handler.get_progress())
+    print("Starting from segment", tasklist[progress_handler.get_progress() + 1])
+    # chunks = {"Chunk_1": [batch1]}
+    carla_client = setup_carla_client()
+    settings = AppSettings(frame_rate=20, client=carla_client)
+    generate_segment_dataset(
+        chosen_segments,
+        settings,
+        after_segment_end=lambda _: progress_handler.update_progress(),
+    )
 
 
 if __name__ == "__main__":

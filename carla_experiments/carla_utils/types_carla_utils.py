@@ -95,11 +95,10 @@ TSensorDataMapContra = TypeVar(
 )
 
 
-class CarlaTask(Protocol, Generic[TContextContra, TSensorDataMapContra]):
-    def __call__(
-        self, context: TContextContra, sensor_data_map: TSensorDataMapContra, /
-    ) -> Union[SaveItems, None]: ...
-
+CarlaTask = Union[
+    Callable[[TContext], Union[SaveItems, None]],
+    Callable[[TContext, TSensorDataMap], Union[SaveItems, None]],
+]
 
 TSaveFileBasePath = TypeVar("TSaveFileBasePath", bound=Optional[Path])
 
@@ -133,6 +132,36 @@ class DecoratedSegment(Protocol, Generic[TContextContra]):
     def __call__(self, context: TContextContra, batch_base_path: Path) -> None: ...
 
 
+# The NEW API
+
+
+class FullSegmentResultOptions(TypedDict, Generic[TContext], total=False):
+    on_segment_end: Callable[[TContext, Path], None]
+    cleanup_actors: bool
+
+
+class FullSegmentConfigResult(TypedDict, Generic[TContext, TSensorDataMap]):
+    context: TContext
+    tasks: List[CarlaTask[TContext, TSensorDataMap]]
+    options: FullSegmentResultOptions[TContext]
+
+
+TSettingsContra = TypeVar("TSettingsContra", contravariant=True)
+
+
+class FullSegmentConfig(Protocol, Generic[TSettingsContra, TContext, TSensorDataMap]):
+    def __call__(
+        self, settings: TSettingsContra
+    ) -> FullSegmentConfigResult[TContext, TSensorDataMap]: ...
+
+
+class FullSegment(Protocol, Generic[TSettingsContra]):
+    def __call__(self, settings: TSettingsContra) -> None: ...
+
+
+# END OF NEW API
+
+
 class BatchResultOptions(TypedDict, Generic[TContext], total=False):
     on_batch_end: Callable[[TContext], None]
     cleanup_actors: bool
@@ -142,9 +171,6 @@ class BatchResult(TypedDict, Generic[TContext]):
     context: TContext
     segments: List[DecoratedSegment[TContext]]
     options: BatchResultOptions[TContext]
-
-
-TSettingsContra = TypeVar("TSettingsContra", contravariant=True)
 
 
 class Batch(Protocol, Generic[TSettingsContra]):

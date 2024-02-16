@@ -75,24 +75,23 @@ def spawn_vehicle(
         set_attributes(vehicle_bp) if set_attributes is not None else vehicle_bp
     )
 
-    spawn_points = world.get_map().get_spawn_points()
-    number_of_spawn_points = len(spawn_points)
-
-    if number_of_spawn_points > 0:
+    transform = spawn_point
+    if transform is None:
+        spawn_points = world.get_map().get_spawn_points()
+        number_of_spawn_points = len(spawn_points)
+        if number_of_spawn_points <= 0:
+            raise Exception("Could not find any spawn points")
         transform = spawn_point if spawn_point else random.choice(spawn_points)
 
-        vehicle = cast(carla.Vehicle, world.spawn_actor(vehicle_bp, transform))
-    else:
-        raise Exception("Could not find any spawn points")
+    vehicle = cast(carla.Vehicle, world.spawn_actor(vehicle_bp, transform))
 
     if autopilot:
         # Sleep before setting autopilot is important because of timing issues.
-        time.sleep(0.1)
+        time.sleep(0.5)
+        vehicle.set_autopilot(True)
         if tick:
             world.tick()
-            time.sleep(0.1)
-        vehicle.set_autopilot(True)
-        print("Autopilot set")
+            time.sleep(0.5)
 
     return vehicle
 
@@ -129,7 +128,6 @@ def spawn_ego_vehicle_old(
         world.tick()
         time.sleep(3)
         ego_vehicle.set_autopilot(True)
-        print("Autopilot set")
 
     return ego_vehicle
 
@@ -171,7 +169,6 @@ def _try_spawn_vehicle_bot(
         vehicle = spawn_vehicle(
             world, spawn_point=spawn_point, autopilot=True, tick=False
         )
-        print("vehicle spawned")
         return vehicle
     except RuntimeError as e:
         if str(e) == "Spawn failed because of collision at spawn position":
@@ -266,7 +263,6 @@ def spawn_walker(
 
     used_spawn_point = spawn_point or random.choice(world.get_map().get_spawn_points())
     walker = cast(carla.Walker, world.spawn_actor(walker_bp, used_spawn_point))
-    print("used_spawn_point", _format_location(used_spawn_point.location))
 
     walker_controller_bp = world.get_blueprint_library().find("controller.ai.walker")
     walker_controller = cast(
@@ -323,8 +319,6 @@ def spawn_walker_bots(
         walkers.append((walker, controller))
 
     world.get_spectator().set_transform(walkers[0][0].get_transform())
-    for walker, controller in walkers:
-        print("walker location: ", _format_location(walker.get_location()))
 
     return walkers
 
@@ -336,12 +330,10 @@ def _try_spawn_walker_bot(
         raise RuntimeError("Could not spawn walker bot, even after retries.")
     try:
         random_location = world.get_random_location_from_navigation()
-        print("random_loc", _format_location(random_location))
         spawn_point = carla.Transform(
             location=random_location, rotation=carla.Rotation()
         )
         walker, controller = spawn_walker(world, spawn_point=spawn_point, tick=True)
-        print("walker spawned")
         return walker, controller
     except RuntimeError as e:
         if str(e) == "Spawn failed because of collision at spawn position":

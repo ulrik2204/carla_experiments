@@ -3,26 +3,39 @@ import time
 from functools import wraps
 from pathlib import Path
 from queue import Empty, Queue
-from typing import (Any, Callable, Dict, List, Mapping, Optional, Type,
-                    TypeVar, Union, cast)
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+)
 
 import carla
 import numpy as np
 from PIL import Image
 
-from carla_experiments.carla_utils.constants import (AttributeDefaults,
-                                                     SensorBlueprints)
+from carla_experiments.carla_utils.constants import AttributeDefaults, SensorBlueprints
 from carla_experiments.carla_utils.spawn import spawn_sensor
-from carla_experiments.carla_utils.types_carla_utils import (Batch,
-                                                             BatchContext,
-                                                             CarlaTask,
-                                                             DecoratedBatch,
-                                                             DecoratedSegment,
-                                                             FlexiblePath,
-                                                             SaveItems,
-                                                             Segment,
-                                                             SensorBlueprint,
-                                                             SensorConfig)
+from carla_experiments.carla_utils.types_carla_utils import (
+    Batch,
+    BatchContext,
+    CarlaTask,
+    DecoratedBatch,
+    DecoratedSegment,
+    FlexiblePath,
+    FullSegment,
+    FullSegmentConfig,
+    SaveItems,
+    Segment,
+    SensorBlueprint,
+    SensorConfig,
+)
 
 TSensorMap = TypeVar("TSensorMap", bound=Mapping[str, Any])
 TSensorDataMap = TypeVar("TSensorDataMap", bound=Mapping[str, Any])
@@ -187,8 +200,11 @@ def _stop_loop(
         on_finished(context, save_files_base_path)
     if cleanup_actors:
         print("Cleaning up actors...")
+        stop_actors(context.ego_vehicle)
         stop_actors(context.actor_map)
         stop_actors(context.sensor_map)
+        acts = list(iter(context.client.get_world().get_actors()))
+        stop_actors(acts)
 
 
 def game_loop_segment(
@@ -199,11 +215,11 @@ def game_loop_segment(
     save_files_base_path: TSaveFileBasePath = None,
     cleanup_actors: bool = False,
 ):
-    print("Preparing segment in loop")
-    for _ in range(100):
-        _get_sensor_data_map(context)
-        context.client.get_world().tick()
-        time.sleep(0.01)
+    # print("Preparing segment in loop")
+    # for _ in range(50):
+    #     _get_sensor_data_map(context)
+    #     context.client.get_world().tick()
+    #     time.sleep(0.01)
     print("Starting segment in loop")
     frames = 0
     while True:
@@ -225,24 +241,25 @@ def game_loop_segment(
 
 
 def stop_actors(actor: Union[carla.Actor, List[carla.Actor], Dict[str, carla.Actor]]):
-    if isinstance(actor, carla.Actor):
-        actor.destroy()
-        del actor
-    elif isinstance(actor, carla.Sensor):
-        actor.stop()
-        actor.destroy()
-        del actor
-    elif isinstance(actor, dict):
-        for a in actor.values():
-            stop_actors(a)
-        actor.clear()
-    elif isinstance(actor, list) or isinstance(actor, tuple):
-        for a in actor:
-            stop_actors(a)
-        if isinstance(actor, list):
+    try:
+        if isinstance(actor, carla.Actor):
+            actor.destroy()
+        elif isinstance(actor, carla.Sensor):
+            actor.stop()
+            actor.destroy()
+        elif isinstance(actor, dict):
+            for a in actor.values():
+                stop_actors(a)
             actor.clear()
-    else:
-        raise ValueError(f"Unsupposed actor map type {type(actor)}")
+        elif isinstance(actor, list) or isinstance(actor, tuple):
+            for a in actor:
+                stop_actors(a)
+            if isinstance(actor, list):
+                actor.clear()
+        else:
+            print("Unknown actor type", type(actor))
+    except Exception as e:
+        print("Error stopping actors", e)
 
 
 TSettings = TypeVar("TSettings")
@@ -404,7 +421,43 @@ def segment(
 
 def create_segment(
     frame_duration: int,
-    segment_base_folder: Optional[FlexiblePath],
-    segment_config: Segment[TContext, TSensorDataMap],
-) -> DecoratedSegment[TContext]:
-    return segment(frame_duration, segment_base_folder)(segment_config)
+    segment_base_folder: FlexiblePath,
+    segment_config: FullSegmentConfig[TSettings, TContext, TSensorDataMap],
+) -> FullSegment:
+
+    def inner(settings: TSettings) -> None:
+        segment_result = segment_config(settings)
+        print("Starting segment")
+        segment_path = _flexible_path_to_path(segment_base_folder)
+        context = segment_result["context"]
+        tasks = segment_result["tasks"]
+        optionals = segment_result["options"]
+        cleanup_actors = (
+            optionals["cleanup_actors"] if "cleanup_actors" in optionals else False
+        )
+
+        on_segment_end = (
+            optionals["on_segment_end"] if "on_segment_end" in optionals else None
+        )
+
+        game_loop_segment(
+            context=context,
+            tasks=tasks,
+            on_finished=on_segment_end,
+            max_frames=frame_duration,
+            save_files_base_path=segment_path,
+            cleanup_actors=cleanup_actors,
+        )
+
+    return inner
+
+
+def generate_segment_dataset(
+    segments: List[FullSegment],
+    settings: TSettings,
+    after_segment_end: Optional[Callable[[TSettings], None]] = None,
+):
+    for segment in segments:
+        segment(settings)
+        if after_segment_end is not None:
+            after_segment_end(settings)
