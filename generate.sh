@@ -11,7 +11,7 @@ echo "Starting at in $root_folder"
 nohup sh ../Carla2/CARLA_0.9.15/CarlaUE4.sh &
 sleep 10
 
-max_attempts=1  # 500
+max_attempts=500
 attempt_num=1
 
 while true; do

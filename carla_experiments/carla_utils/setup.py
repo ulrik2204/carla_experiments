@@ -200,11 +200,9 @@ def _stop_loop(
         on_finished(context, save_files_base_path)
     if cleanup_actors:
         print("Cleaning up actors...")
-        stop_actors(context.ego_vehicle)
         stop_actors(context.actor_map)
         stop_actors(context.sensor_map)
-        acts = list(iter(context.client.get_world().get_actors()))
-        stop_actors(acts)
+        stop_actors(context.ego_vehicle)
 
 
 def game_loop_segment(
@@ -244,9 +242,10 @@ def stop_actors(actor: Union[carla.Actor, List[carla.Actor], Dict[str, carla.Act
     try:
         if isinstance(actor, carla.Actor):
             actor.destroy()
+            carla.command.DestroyActor(actor)  # type: ignore
         elif isinstance(actor, carla.Sensor):
             actor.stop()
-            actor.destroy()
+            carla.command.DestroyActor(actor)  # type: ignore
         elif isinstance(actor, dict):
             for a in actor.values():
                 stop_actors(a)

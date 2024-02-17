@@ -87,11 +87,11 @@ def spawn_vehicle(
 
     if autopilot:
         # Sleep before setting autopilot is important because of timing issues.
-        time.sleep(0.5)
+        time.sleep(0.1)
         vehicle.set_autopilot(True)
         if tick:
             world.tick()
-            time.sleep(0.5)
+            time.sleep(0.1)
 
     return vehicle
 
@@ -275,6 +275,7 @@ def spawn_walker(
         ),
     )
     if tick:
+        time.sleep(0.2)
         world.tick()
     walker_controller.start()
     if walker_path is not None:
@@ -317,8 +318,6 @@ def spawn_walker_bots(
     for _ in range(number_of_pedestrians):
         walker, controller = _try_spawn_walker_bot(world)
         walkers.append((walker, controller))
-
-    world.get_spectator().set_transform(walkers[0][0].get_transform())
 
     return walkers
 

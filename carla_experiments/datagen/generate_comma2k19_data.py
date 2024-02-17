@@ -269,11 +269,10 @@ def generate_simple_segment(map: str, segment_path: Path, spawn_point_idx: int):
     def simple_segment_config(settings: AppSettings) -> FullSegmentConfigResult:
 
         # client = setup_carla_client("Town10HD")
-        same_map = True
         client = settings.client
         if map not in client.get_world().get_map().name:
             client.load_world(map, reset_settings=False)
-            same_map = False
+            client.reload_world(reset_settings=False)
         world = client.get_world()
         world.tick()
         carla_map = world.get_map()
