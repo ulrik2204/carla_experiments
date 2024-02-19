@@ -160,10 +160,11 @@ def spawn_ego_vehicle(
 
 
 def _try_spawn_vehicle_bot(
-    world: carla.World, possible_spawn_points: List[carla.Transform], tries: int = 5
-) -> carla.Vehicle:
+    world: carla.World, possible_spawn_points: List[carla.Transform], tries: int = 10
+) -> Optional[carla.Vehicle]:
     if tries == 0:
-        raise RuntimeError("Could not spawn vehicle bot")
+        print("Could not spawn vehicle bot")
+        return None
     spawn_point = random.choice(possible_spawn_points)
     try:
         vehicle = spawn_vehicle(
@@ -298,7 +299,6 @@ def spawn_walker(
             daemon=True,
         )
         path_thread.start()
-        # TODO: Handle stopping the thread when the walker is destroyed
 
     elif walk_randomly_afterwards:
         # destination = world.get_random_location_from_navigation()
@@ -319,11 +319,45 @@ def _format_location(location: carla.Location):
 
 def spawn_walker_bots(
     world: carla.World,
-    number_of_pedestrians: int,
+    max_spawn_count: int,
     accessible_spawn_points: Optional[List[carla.Transform]] = None,
 ) -> List[Tuple[carla.WalkerAIController, carla.Walker]]:
+    """Spawns walker bots in the world up to the number of max_spawn_count.
+    The pedestrians will be spawned at random locations in the world using world.get_random_location_from_navigation(),
+    or choose randomly from the accessible_spawn_points if provided. It returns the list of walker bots spawned,
+    which will be a list of the (controller, walker) tuples up to the number of max_spawn_count. If a walker
+    randomly collides at the spawn position, it will retry up to 10 times. After the retries, it will stop and
+    that walker will not be included in the list of walker bots returned.
+
+    Args:
+        world (carla.World): The carla World object.
+        max_spawn_count (int): The maximum number of walker bots to be spawned.
+        accessible_spawn_points (Optional[List[carla.Transform]], optional): The list of carla.Transform objects
+            of where to spawn the walkers. By default will spawn at random locations. Defaults to None.
+
+    Returns:
+        List[Tuple[carla.WalkerAIController, carla.Walker]]: The list of the controller and walker bots spawned.
+    """
     walkers: List[Tuple[carla.WalkerAIController, carla.Walker]] = []
-    for _ in range(number_of_pedestrians):
+    for _ in range(max_spawn_count):
+
+        result = _try_spawn_walker_bot(world, accessible_spawn_points)
+        if result is not None:
+            controller, walker = result
+            walkers.append((controller, walker))
+
+    return walkers
+
+
+def _try_spawn_walker_bot(
+    world: carla.World,
+    accessible_spawn_points: Optional[List[carla.Transform]] = None,
+    tries: int = 10,
+) -> Optional[Tuple[carla.WalkerAIController, carla.Walker]]:
+    if tries == 0:
+        print("Could not spawn walker bot, even after retries.")
+        return None
+    try:
         spawn_point = (
             carla.Transform(
                 location=world.get_random_location_from_navigation(),
@@ -332,19 +366,6 @@ def spawn_walker_bots(
             if accessible_spawn_points is None
             else random.choice(accessible_spawn_points)
         )
-
-        controller, walker = _try_spawn_walker_bot(world, spawn_point=spawn_point)
-        walkers.append((controller, walker))
-
-    return walkers
-
-
-def _try_spawn_walker_bot(
-    world: carla.World, spawn_point: carla.Transform, tries: int = 10
-) -> Tuple[carla.WalkerAIController, carla.Walker]:
-    if tries == 0:
-        raise RuntimeError("Could not spawn walker bot, even after retries.")
-    try:
         controller, walker = spawn_walker(world, spawn_point=spawn_point, tick=True)
         return controller, walker
     except RuntimeError as e:
@@ -353,6 +374,6 @@ def _try_spawn_walker_bot(
                 f"spawn collision while spawning walker, retrying (tries left: {tries})"
             )
             return _try_spawn_walker_bot(
-                world, spawn_point=spawn_point, tries=tries - 1
+                world, accessible_spawn_points, tries=tries - 1
             )
         raise e
