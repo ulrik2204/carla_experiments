@@ -1,5 +1,6 @@
 import os
 import random
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -14,11 +15,8 @@ from PIL import Image
 from carla_experiments.carla_utils.constants import SensorBlueprints
 from carla_experiments.carla_utils.setup import (
     BatchContext,
-    batch,
-    create_dataset,
     create_segment,
     generate_segment_dataset,
-    segment,
     setup_carla_client,
     setup_sensors,
 )
@@ -28,11 +26,8 @@ from carla_experiments.carla_utils.spawn import (
     spawn_walker_bots,
 )
 from carla_experiments.carla_utils.types_carla_utils import (
-    BatchResult,
-    DecoratedBatch,
     FullSegment,
     FullSegmentConfigResult,
-    SegmentResult,
 )
 from carla_experiments.datagen.utils import (
     carla_location_to_ecef,
@@ -75,7 +70,7 @@ class ProgressHandler:
 
 class AppActorMap(TypedDict):
     vehicles: List[carla.Vehicle]
-    walkers: List[Tuple[carla.Walker, carla.WalkerAIController]]
+    walkers: List[Tuple[carla.WalkerAIController, carla.Walker]]
 
 
 class AppSensorMap(TypedDict):
@@ -101,15 +96,6 @@ class DataDict(TypedDict):
 @dataclass
 class AppContext(BatchContext[AppSensorMap, AppActorMap], AppSettings):
     data_dict: DataDict
-
-
-def update_vehicle_lights_task(
-    context: AppContext, sensor_data_map: AppSensorDataMap
-) -> None:
-    traffic_manager = context.client.get_trafficmanager()
-    vehicles = context.actor_map["vehicles"]
-    for vehicle in vehicles:
-        traffic_manager.update_vehicle_lights(vehicle, True)
 
 
 def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
@@ -164,9 +150,12 @@ def configure_traffic_manager(
     ego_vehicle: carla.Vehicle,
     vehicle_bots: List[carla.Vehicle],
 ) -> None:
-    traffic_manager.set_random_device_seed(42)
+    # traffic_manager.set_random_device_seed(42)
     # traffic_manager.set_global_distance_to_leading_vehicle(2.5)
+    traffic_manager.set_synchronous_mode(True)
     traffic_manager.set_respawn_dormant_vehicles(True)
+    traffic_manager.set_boundaries_respawn_dormant_vehicles(25, 700)
+
     # traffic_manager.set_desired_speed(ego_vehicle, 50 / 3.6)  # 50 km/h
     # traffic_manager.set_hybrid_physics_mode(True)
     # traffic_manager.set_hybrid_physics_radius(70)
@@ -180,6 +169,7 @@ def configure_traffic_manager(
         )
         traffic_manager.random_left_lanechange_percentage(bot, random.randint(1, 60))
         traffic_manager.random_right_lanechange_percentage(bot, random.randint(1, 60))
+        traffic_manager.update_vehicle_lights(bot, True)
 
 
 def save_stacked_arrays(arrays: List[np.ndarray], output_file_path: Path):
@@ -252,6 +242,7 @@ def on_segment_end(context: AppContext, save_files_base_path: Path) -> None:
         global_pose_path / "frame_orientations",
     )
     # Resetting the data_dict after each segment
+    # This shouldn't be necessary anymore
     context.data_dict = {"location": [], "rotation": [], "images": []}
 
 
@@ -265,21 +256,27 @@ def configure_traffic_lights(world: carla.World):
             actor.set_red_time(5)
 
 
-def generate_simple_segment(map: str, segment_path: Path, spawn_point_idx: int):
+def generate_simple_segment(map: str, segment_path: Path, segment_nr_in_map: int):
     def simple_segment_config(settings: AppSettings) -> FullSegmentConfigResult:
 
         # client = setup_carla_client("Town10HD")
         client = settings.client
         if map not in client.get_world().get_map().name:
+            print("Loading new map", map, "...")
             client.load_world(map, reset_settings=False)
             client.reload_world(reset_settings=False)
+            time.sleep(5)
+        else:
+            print("Using previosly loaded map", map)
         world = client.get_world()
         world.tick()
         carla_map = world.get_map()
         spawn_points = carla_map.get_spawn_points()
         len_spawn_points = len(spawn_points)
-        spawn_point_index = spawn_point_idx % len_spawn_points
+        spawn_point_index = segment_nr_in_map % len_spawn_points
         used_spawn_point = spawn_points[spawn_point_index]
+        rotation = used_spawn_point.rotation
+        location = used_spawn_point.location
         print("Generating in map", map)
         print(
             "Using spawn point",
@@ -287,9 +284,9 @@ def generate_simple_segment(map: str, segment_path: Path, spawn_point_idx: int):
             "of ",
             len_spawn_points,
             "with coords",
-            f"({used_spawn_point.location.x}, {used_spawn_point.location.y}, {used_spawn_point.location.z})",
+            f"({location.x:.2f}, {location.y:.2f}, {location.z:.2f})",
             "and rotation",
-            f"({used_spawn_point.rotation.roll}, {used_spawn_point.rotation.pitch}, {used_spawn_point.rotation.yaw})",
+            f"({rotation.roll:.2f}, {rotation.pitch:.2f}, {rotation.yaw:.2f})",
         )
         spawn_point = spawn_points[spawn_point_index]
         ego_vehicle = spawn_ego_vehicle(world, autopilot=True, spawn_point=spawn_point)
@@ -310,8 +307,11 @@ def generate_simple_segment(map: str, segment_path: Path, spawn_point_idx: int):
                 },
             },
         )
-
-        vehicle_bots = spawn_vehicle_bots(world, 10)
+        vehicle_bot_spawn_points = spawn_points.copy()
+        vehicle_bot_spawn_points.pop(spawn_point_index)
+        vehicle_bots = spawn_vehicle_bots(
+            world, 10, accessible_spawn_points=vehicle_bot_spawn_points
+        )
         walker_bots = spawn_walker_bots(world, 15)
         traffic_manager = client.get_trafficmanager()
         configure_traffic_manager(traffic_manager, ego_vehicle, vehicle_bots)
@@ -335,7 +335,6 @@ def generate_simple_segment(map: str, segment_path: Path, spawn_point_idx: int):
             "tasks": [
                 spectator_follow_ego_vehicle_task,
                 save_data_task,
-                update_vehicle_lights_task,
             ],
             "options": {
                 "on_segment_end": on_segment_end,
@@ -431,14 +430,17 @@ def main(root_folder: Optional[str], progress_file: Optional[str]):
         base_path = Path("./output") / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     else:
         base_path = Path(root_folder)
-    tasklist = [
+    segment_save_path_list = [
         (base_path / f"Chunk_{i//100 + 1}/Batch_{i//10 + 1}/Segment_{i}").as_posix()
         for i in range(1, 2001)
     ]
-    progress_handler = ProgressHandler(used_progress_file, tasklist)
-    all_segments = create_all_segments(tasklist)
+    progress_handler = ProgressHandler(used_progress_file, segment_save_path_list)
+    all_segments = create_all_segments(segment_save_path_list)
     chosen_segments = choose_segments(all_segments, progress_handler.get_progress())
-    print("Starting from segment", tasklist[progress_handler.get_progress() + 1])
+    print(
+        "Starting from segment",
+        segment_save_path_list[progress_handler.get_progress() + 1],
+    )
     # chunks = {"Chunk_1": [batch1]}
     carla_client = setup_carla_client()
     settings = AppSettings(frame_rate=20, client=carla_client)

@@ -10,6 +10,7 @@ from typing import (
     List,
     Mapping,
     Optional,
+    Tuple,
     Type,
     TypeVar,
     Union,
@@ -124,7 +125,7 @@ def setup_carla_client(map: Optional[str] = None, frame_rate: int = 20):
 
     Args:
         map (str): The map to load. E.g. "Town01"
-        frame_rate (int, optional): Frame rate to run the simulation. Defaults to 20.
+        frame_rate (int, optional): Frame rate to run the simulation in fps. Defaults to 20.
 
     Returns:
         Client: The CARLA client object
@@ -139,6 +140,7 @@ def setup_carla_client(map: Optional[str] = None, frame_rate: int = 20):
     settings = world.get_settings()
     settings.synchronous_mode = True  # Enables synchronous mode
     settings.fixed_delta_seconds = 1.0 / frame_rate
+    settings.actor_active_distance = 2000
     world.apply_settings(settings)
     return client
 
@@ -223,6 +225,7 @@ def game_loop_segment(
     while True:
         try:  # in case of a crash, try to recover and continue
             if max_frames is not None and frames >= max_frames:
+                print("Cleaning up actors...")
                 _stop_loop(context, save_files_base_path, on_finished, cleanup_actors)
                 break
             sensor_data_map = _get_sensor_data_map(context)
@@ -234,14 +237,18 @@ def game_loop_segment(
             context.client.get_world().tick()
             frames += 1
         except KeyboardInterrupt:
-            _stop_loop(context, save_files_base_path, None, cleanup_actors)
+            print("Cleaning up actors...")
+            _stop_loop(context, save_files_base_path, None, cleanup_actors=True)
             sys.exit()
 
 
-def stop_actors(actor: Union[carla.Actor, List[carla.Actor], Dict[str, carla.Actor]]):
+def stop_actors(
+    actor: Union[
+        carla.Actor, List[carla.Actor], Dict[str, carla.Actor], Tuple[carla.Actor, ...]
+    ]
+):
     try:
         if isinstance(actor, carla.Actor):
-            actor.destroy()
             carla.command.DestroyActor(actor)  # type: ignore
         elif isinstance(actor, carla.Sensor):
             actor.stop()
@@ -289,7 +296,7 @@ def save_items_to_file(base_path: Path, items: SaveItems):
             break
 
 
-def create_dataset(
+def create_batch_dataset(
     batches: List[DecoratedBatch[TSettings]],
     base_folder: FlexiblePath,
     settings: TSettings,

@@ -172,7 +172,9 @@ def _try_spawn_vehicle_bot(
         return vehicle
     except RuntimeError as e:
         if str(e) == "Spawn failed because of collision at spawn position":
-            print("spawn collision while spawning vehicle, retrying")
+            print(
+                f"spawn collision while spawning vehicle, retrying (tries left:{tries})"
+            )
             return _try_spawn_vehicle_bot(world, possible_spawn_points, tries=tries - 1)
         raise e
 
@@ -180,9 +182,14 @@ def _try_spawn_vehicle_bot(
 def spawn_vehicle_bots(
     world: carla.World,
     number_of_vehicles: int,
+    accessible_spawn_points: Optional[List[carla.Transform]] = None,
 ) -> List[carla.Vehicle]:
     vehicles = []
-    spawn_points = world.get_map().get_spawn_points()
+    spawn_points = (
+        accessible_spawn_points
+        if accessible_spawn_points is not None
+        else world.get_map().get_spawn_points()
+    )
     for _ in range(number_of_vehicles):
         vehicle = _try_spawn_vehicle_bot(world, spawn_points)
         vehicles.append(vehicle)
@@ -247,7 +254,7 @@ def spawn_walker(
     walker_path: Optional[List[carla.Location]] = None,
     walk_randomly_afterwards: bool = True,
     tick: bool = True,
-) -> Tuple[carla.Walker, carla.WalkerAIController]:
+) -> Tuple[carla.WalkerAIController, carla.Walker]:
     blueprint_library = world.get_blueprint_library()
     walker_bp = (
         random.choice(blueprint_library.filter("walker.pedestrian.*"))
@@ -303,7 +310,7 @@ def spawn_walker(
         )
         walk_random_thread.start()
 
-    return walker, walker_controller
+    return walker_controller, walker
 
 
 def _format_location(location: carla.Location):
@@ -313,29 +320,39 @@ def _format_location(location: carla.Location):
 def spawn_walker_bots(
     world: carla.World,
     number_of_pedestrians: int,
-) -> List[Tuple[carla.Walker, carla.WalkerAIController]]:
-    walkers = []
+    accessible_spawn_points: Optional[List[carla.Transform]] = None,
+) -> List[Tuple[carla.WalkerAIController, carla.Walker]]:
+    walkers: List[Tuple[carla.WalkerAIController, carla.Walker]] = []
     for _ in range(number_of_pedestrians):
-        walker, controller = _try_spawn_walker_bot(world)
-        walkers.append((walker, controller))
+        spawn_point = (
+            carla.Transform(
+                location=world.get_random_location_from_navigation(),
+                rotation=carla.Rotation(),
+            )
+            if accessible_spawn_points is None
+            else random.choice(accessible_spawn_points)
+        )
+
+        controller, walker = _try_spawn_walker_bot(world, spawn_point=spawn_point)
+        walkers.append((controller, walker))
 
     return walkers
 
 
 def _try_spawn_walker_bot(
-    world: carla.World, tries: int = 10
-) -> Tuple[carla.Walker, carla.WalkerAIController]:
+    world: carla.World, spawn_point: carla.Transform, tries: int = 10
+) -> Tuple[carla.WalkerAIController, carla.Walker]:
     if tries == 0:
         raise RuntimeError("Could not spawn walker bot, even after retries.")
     try:
-        random_location = world.get_random_location_from_navigation()
-        spawn_point = carla.Transform(
-            location=random_location, rotation=carla.Rotation()
-        )
-        walker, controller = spawn_walker(world, spawn_point=spawn_point, tick=True)
-        return walker, controller
+        controller, walker = spawn_walker(world, spawn_point=spawn_point, tick=True)
+        return controller, walker
     except RuntimeError as e:
         if str(e) == "Spawn failed because of collision at spawn position":
-            print("spawn collision while spawning walker, retrying")
-            return _try_spawn_walker_bot(world, tries=tries - 1)
+            print(
+                f"spawn collision while spawning walker, retrying (tries left: {tries})"
+            )
+            return _try_spawn_walker_bot(
+                world, spawn_point=spawn_point, tries=tries - 1
+            )
         raise e
