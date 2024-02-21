@@ -1,0 +1,12 @@
+version: '3.8'
+services:
+  openpilot:
+    build:
+      context: .  # Assuming the Dockerfile is in the current directory
+      dockerfile: New.Dockerfile  # Assuming the Dockerfile is in the current directory
+      # dockerfile: Dockerfile # Uncomment if Dockerfile has a different name or is in a different location
+    volumes:
+      - /home/ulrikro/datasets/CommaAI:/datasets/CommaAI  # Mounts the host directory to /datasets in the container
+    command: tail -f /dev/null  # Keeps the container running indefinitely
+    # ports:  # Uncomment and modify if you need to expose any ports
+    #   - "8080:8080"
