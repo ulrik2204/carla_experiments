@@ -16,8 +16,7 @@ from carla_experiments.carla_utils.setup import (
 from carla_experiments.carla_utils.spawn import spawn_ego_vehicle
 
 
-class AppActorsMap(TypedDict):
-    ...
+class AppActorsMap(TypedDict): ...
 
 
 class AppSensorMap(TypedDict):

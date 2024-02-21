@@ -267,7 +267,7 @@ def generate_simple_segment(map: str, segment_path: Path, segment_nr_in_map: int
             client.reload_world(reset_settings=False)
             time.sleep(5)
         else:
-            print("Using previosly loaded map", map)
+            print("Using previously loaded map", map)
         world = client.get_world()
         world.tick()
         carla_map = world.get_map()

@@ -18,8 +18,7 @@ from carla_experiments.carla_utils.spawn import spawn_ego_vehicle
 from carla_experiments.carla_utils.types_carla_utils import BatchContext
 
 
-class SimpleActorMap(TypedDict):
-    ...
+class SimpleActorMap(TypedDict): ...
 
 
 class SimpleSensorMap(TypedDict):
