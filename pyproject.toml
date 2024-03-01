@@ -24,6 +24,7 @@ ffmpeg-python = "^0.2.0"
 pymap3d = "^3.0.1"
 scipy = "1.10"
 pyproj = "3.3.0"
+efficientnet-pytorch = "^0.7.1"
 
 
 [tool.poetry.group.dev.dependencies]

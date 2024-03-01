@@ -69,6 +69,7 @@ class SpawnActor:
         :param parent: (str)
         """
         ...
+
     def then(self, command: str):
         """
         Links another command to be executed right after. It allows to ease very common flows such as spawning a set of vehicles by command and then using this method to set them to autopilot automatically.

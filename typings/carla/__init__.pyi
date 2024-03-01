@@ -36,6 +36,7 @@ class Actor:
         :param angular_impulse: (Vector3D) Angular impulse vector in global coordinates.
         """
         ...
+
     def add_force(self, force: Vector3D):
         """
         Applies a force at the center of mass of the actor. This method should be used for forces that are applied over a certain period of time. Use add_impulse() to apply an impulse that only lasts an instant.
@@ -43,6 +44,7 @@ class Actor:
         :param force: (Vector3D) Force vector in global coordinates.
         """
         ...
+
     def add_impulse(self, impulse: Vector3D):
         """
         Applies an impulse at the center of mass of the actor. This method should be used for instantaneous forces, usually applied once. Use add_force() to apply forces over a period of time.
@@ -50,6 +52,7 @@ class Actor:
         :param impulse: (Vector3D) Impulse vector in global coordinates.
         """
         ...
+
     def add_torque(self, torque: Vector3D):
         """
         Applies a torque at the center of mass of the actor. This method should be used for torques that are applied over a certain period of time. Use add_angular_impulse() to apply a torque that only lasts an instant.
@@ -57,6 +60,7 @@ class Actor:
         :param torque: (Vector3D) Torque vector in global coordinates.
         """
         ...
+
     def destroy(self) -> bool:
         """
         Tells the simulator to destroy this actor and returns True if it was successful. It has no effect if it was already destroyed.
@@ -66,11 +70,13 @@ class Actor:
         :return: bool
         """
         ...
+
     def disable_constant_velocity(self):
         """
         Disables any constant velocity previously set for a carla.Vehicle actor.
         """
         ...
+
     def enable_chrono_physics(
         self,
         max_substeps: int,
@@ -100,6 +106,7 @@ class Actor:
         :param base_json_path: (str) Path to `chrono/data/vehicle` folder. E.g., `/home/user/carla/Build/chrono-install/share/chrono/data/vehicle/` (the final `/` character is required).
         """
         ...
+
     def enable_constant_velocity(self, velocity: Vector3D):
         """
         Sets a vehicle's velocity vector to a constant value over time. The resulting velocity will be approximately the `velocity` being set, as with set_target_velocity().
@@ -111,6 +118,7 @@ class Actor:
         :param velocity: (Vector3D) Velocity vector in local space.
         """
         ...
+
     def show_debug_telemetry(self, enabled: bool = True):
         """
         Enables or disables the telemetry on this vehicle. This shows information about the vehicles current state and forces applied to it in the spectator window. Only information for one vehicle can be shown so if you enable a second one, the previous will be automatically disabled.
@@ -118,6 +126,7 @@ class Actor:
         :param enabled: (bool)
         """
         ...
+
     def open_door(self, door_idx: VehicleDoor):
         """
         Open the door door_idx if the vehicle has it. Use carla.VehicleDoor.All to open all available doors.
@@ -127,6 +136,7 @@ class Actor:
         :param door_idx: (VehicleDoor) door index
         """
         ...
+
     def close_door(self, door_idx: VehicleDoor):
         """
         Close the door door_idx if the vehicle has it. Use carla.VehicleDoor.All to close all available doors.
@@ -136,6 +146,7 @@ class Actor:
         :param door_idx: (VehicleDoor) door index
         """
         ...
+
     def get_acceleration(self) -> Vector3D:
         """
         Returns the actor's 3D acceleration vector the client recieved during last tick. The method does not call the simulator.
@@ -143,6 +154,7 @@ class Actor:
         :return: carla.Vector3D
         """
         ...
+
     def get_angular_velocity(self) -> Vector3D:
         """
         Returns the actor's angular velocity vector the client recieved during last tick. The method does not call the simulator.
@@ -150,6 +162,7 @@ class Actor:
         :return: carla.Vector3D
         """
         ...
+
     def get_location(self) -> Location:
         """
         Returns the actor's location the client recieved during last tick. The method does not call the simulator.
@@ -157,6 +170,7 @@ class Actor:
         :return: carla.Location
         """
         ...
+
     def get_transform(self) -> Transform:
         """
         Returns the actor's transform (location and rotation) the client recieved during last tick. The method does not call the simulator.
@@ -164,6 +178,7 @@ class Actor:
         :return: carla.Transform
         """
         ...
+
     def get_velocity(self) -> Vector3D:
         """
         Returns the actor's velocity vector the client recieved during last tick. The method does not call the simulator.
@@ -171,6 +186,7 @@ class Actor:
         :return: carla.Vector3D
         """
         ...
+
     def get_world(self) -> World:
         """
         Returns the world this actor belongs to.
@@ -178,6 +194,7 @@ class Actor:
         :return: carla.World
         """
         ...
+
     def set_target_angular_velocity(self, angular_velocity: Vector3D):
         """
         Sets the actor's angular velocity vector. This is applied before the physics step so the resulting angular velocity will be affected by external forces such as friction.
@@ -185,6 +202,7 @@ class Actor:
         :param angular_velocity: (Vector3D)
         """
         ...
+
     def set_location(self, location: Location):
         """
         Teleports the actor to a given location.
@@ -192,6 +210,7 @@ class Actor:
         :param location: (Location)
         """
         ...
+
     def set_simulate_physics(self, enabled: bool = True):
         """
         Enables or disables the simulation of physics on this actor.
@@ -199,6 +218,7 @@ class Actor:
         :param enabled: (bool)
         """
         ...
+
     def set_transform(self, transform: Transform):
         """
         Teleports the actor to a given transform (location and rotation).
@@ -206,6 +226,7 @@ class Actor:
         :param transform: (Transform)
         """
         ...
+
     def set_target_velocity(self, velocity: Vector3D):
         """
         Sets the actor's velocity vector. This is applied before the physics step so the resulting angular velocity will be affected by external forces such as friction.
@@ -213,9 +234,11 @@ class Actor:
         :param velocity: (Vector3D)
         """
         ...
+
     def __str__(self):
         """ """
         ...
+
     def set_enable_gravity(self, enabled: bool):
         """
         Enables or disables gravity for the actor. __Default__ is True.
@@ -283,6 +306,7 @@ class Vehicle(Actor):
         :param control: (VehicleControl)
         """
         ...
+
     def apply_physics_control(self, physics_control: VehiclePhysicsControl):
         """
         Applies a physics control object in the next tick containing the parameters that define the vehicle as a corporeal body. E.g.: moment of inertia, mass, drag coefficient and many more.
@@ -290,6 +314,7 @@ class Vehicle(Actor):
         :param physics_control: (VehiclePhysicsControl)
         """
         ...
+
     def is_at_traffic_light(self) -> bool:
         """
         Vehicles will be affected by a traffic light when the light is red and the vehicle is inside its bounding box. The client returns whether a traffic light is affecting this vehicle according to last tick (it does not call the simulator).
@@ -297,6 +322,7 @@ class Vehicle(Actor):
         :return: bool
         """
         ...
+
     def get_control(self) -> VehicleControl:
         """
         The client returns the control applied in the last tick. The method does not call the simulator.
@@ -304,6 +330,7 @@ class Vehicle(Actor):
         :return: carla.VehicleControl
         """
         ...
+
     def get_light_state(self) -> VehicleLightState:
         """
         Returns a flag representing the vehicle light state, this represents which lights are active or not.
@@ -311,6 +338,7 @@ class Vehicle(Actor):
         :return: carla.VehicleLightState
         """
         ...
+
     def get_physics_control(self) -> VehiclePhysicsControl:
         """
         The simulator returns the last physics control applied to this vehicle.
@@ -320,6 +348,7 @@ class Vehicle(Actor):
         :return: carla.VehiclePhysicsControl
         """
         ...
+
     def get_speed_limit(self) -> float:
         """
         The client returns the speed limit affecting this vehicle according to last tick (it does not call the simulator). The speed limit is updated when passing by a speed limit signal, so a vehicle might have none right after spawning.
@@ -327,6 +356,7 @@ class Vehicle(Actor):
         :return: float
         """
         ...
+
     def get_traffic_light(self) -> TrafficLight:
         """
         Retrieves the traffic light actor affecting this vehicle (if any) according to last tick. The method does not call the simulator.
@@ -334,6 +364,7 @@ class Vehicle(Actor):
         :return: carla.TrafficLight
         """
         ...
+
     def get_traffic_light_state(self) -> TrafficLightState:
         """
         The client returns the state of the traffic light affecting this vehicle according to last tick. The method does not call the simulator. If no traffic light is currently affecting the vehicle, returns green.
@@ -341,6 +372,7 @@ class Vehicle(Actor):
         :return: carla.TrafficLightState
         """
         ...
+
     def enable_carsim(self, simfile_path: str):
         """
         Enables the CarSim physics solver for this particular vehicle. In order for this function to work, there needs to be a valid license manager running on the server side. The control inputs are redirected to CarSim which will provide the position and orientation of the vehicle for every frame.
@@ -348,6 +380,7 @@ class Vehicle(Actor):
         :param simfile_path: (str) Path to the `.simfile` file with the parameters of the simulation.
         """
         ...
+
     def use_carsim_road(self, enabled: bool):
         """
         Enables or disables the usage of CarSim vs terrain file specified in the `.simfile`. By default this option is disabled and CarSim uses unreal engine methods to process the geometry of the scene.
@@ -355,6 +388,7 @@ class Vehicle(Actor):
         :param enabled: (bool)
         """
         ...
+
     def set_autopilot(self, enabled: bool = True, port: np.uint16 = np.uint16(8000)):
         """
         Registers or deletes the vehicle from a Traffic Manager's list. When __True__, the Traffic Manager passed as parameter will move the vehicle around. The autopilot takes place client-side.
@@ -364,6 +398,7 @@ class Vehicle(Actor):
         :param port: (np.uint16) The port of the TM-Server where the vehicle is to be registered or unlisted. If __None__ is passed, it will consider a TM at default port `8000`.
         """
         ...
+
     def set_light_state(self, light_state: VehicleLightState):
         """
         Sets the light state of a vehicle using a flag that represents the lights that are on and off.
@@ -371,9 +406,11 @@ class Vehicle(Actor):
         :param light_state: (VehicleLightState)
         """
         ...
+
     def __str__(self):
         """ """
         ...
+
     def set_wheel_steer_direction(
         self, wheel_location: VehicleWheelLocation, angle_in_deg: float
     ):
@@ -387,6 +424,7 @@ class Vehicle(Actor):
         :param angle_in_deg: (float)
         """
         ...
+
     def get_wheel_steer_angle(self, wheel_location: VehicleWheelLocation) -> float:
         """
         Returns the physics angle in degrees of a vehicle's wheel.
@@ -398,6 +436,7 @@ class Vehicle(Actor):
         :return: float
         """
         ...
+
     def get_failure_state(self) -> VehicleFailureState:
         """
         Vehicle have failure states, to  indicate that it is incapable of continuing its route. This function returns the vehicle's specific failure state, or in other words, the cause that resulted in it.
@@ -421,6 +460,7 @@ class Walker(Actor):
         :param control: (WalkerControl)
         """
         ...
+
     def get_control(self) -> WalkerControl:
         """
         The client returns the control applied to this walker during last tick. The method does not call the simulator.
@@ -428,6 +468,7 @@ class Walker(Actor):
         :return: carla.WalkerControl
         """
         ...
+
     def get_bones(self) -> WalkerBoneControlOut:
         """
                       Return the structure with all the bone transformations from the actor. For each bone, we get the name and its transform in three different spaces:
@@ -439,6 +480,7 @@ class Walker(Actor):
                       :return: carla.WalkerBoneControlOut
         """
         ...
+
     def set_bones(self, bones: WalkerBoneControlIn):
         """
                       Set the bones of the actor. For each bone we want to set we use a relative transform. Only the bones in this list will be set. For each bone you need to setup this info:
@@ -448,6 +490,7 @@ class Walker(Actor):
                       :param bones: (WalkerBoneControlIn)
         """
         ...
+
     def blend_pose(self, blend_value: float):
         """
                       Set the blending value of the custom pose with the animation. The values can be:
@@ -458,21 +501,25 @@ class Walker(Actor):
                       :param blend_value: (float)
         """
         ...
+
     def show_pose(self):
         """
         Show the custom pose and hide the animation (same as calling blend_pose(1))
         """
         ...
+
     def hide_pose(self):
         """
         Hide the custom pose and show the animation (same as calling blend_pose(0))
         """
         ...
+
     def get_pose_from_animation(self):
         """
         Make a copy of the current animation frame as the custom pose. Initially the custom pose is the neutral pedestrian pose.
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -489,16 +536,19 @@ class WalkerAIController(Actor):
         :param destination: (Location)
         """
         ...
+
     def start(self):
         """
         Enables AI control for its parent walker.
         """
         ...
+
     def stop(self):
         """
         Disables AI control for its parent walker.
         """
         ...
+
     def set_max_speed(self, speed: float = 1.4):
         """
         Sets a speed for the walker in meters per second.
@@ -506,6 +556,7 @@ class WalkerAIController(Actor):
         :param speed: (float) An easy walking speed is set by default.
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -555,6 +606,7 @@ class TrafficLight(TrafficSign):
         :param freeze: (bool)
         """
         ...
+
     def is_frozen(self) -> bool:
         """
         The client returns True if a traffic light is frozen according to last tick. The method does not call the simulator.
@@ -562,6 +614,7 @@ class TrafficLight(TrafficSign):
         :return: bool
         """
         ...
+
     def get_elapsed_time(self) -> float:
         """
         The client returns the time in seconds since current light state started according to last tick. The method does not call the simulator.
@@ -569,6 +622,7 @@ class TrafficLight(TrafficSign):
         :return: float
         """
         ...
+
     def get_group_traffic_lights(self) -> list[TrafficLight]:
         """
         Returns all traffic lights in the group this one belongs to.
@@ -578,6 +632,7 @@ class TrafficLight(TrafficSign):
         :return: list(carla.TrafficLight)
         """
         ...
+
     def reset_group(self):
         """
         Resets the state of the traffic lights of the group to the initial state at the start of the simulation.
@@ -585,6 +640,7 @@ class TrafficLight(TrafficSign):
         *note*: This method calls the simulator.
         """
         ...
+
     def get_pole_index(self) -> int:
         """
         Returns the index of the pole that identifies it as part of the traffic light group of a junction.
@@ -592,6 +648,7 @@ class TrafficLight(TrafficSign):
         :return: int
         """
         ...
+
     def get_state(self) -> TrafficLightState:
         """
         The client returns the state of the traffic light according to last tick. The method does not call the simulator.
@@ -599,6 +656,7 @@ class TrafficLight(TrafficSign):
         :return: carla.TrafficLightState
         """
         ...
+
     def get_green_time(self) -> float:
         """
         The client returns the time set for the traffic light to be green, according to last tick. The method does not call the simulator.
@@ -606,6 +664,7 @@ class TrafficLight(TrafficSign):
         :return: float
         """
         ...
+
     def get_red_time(self) -> float:
         """
         The client returns the time set for the traffic light to be red, according to last tick. The method does not call the simulator.
@@ -613,6 +672,7 @@ class TrafficLight(TrafficSign):
         :return: float
         """
         ...
+
     def get_yellow_time(self) -> float:
         """
         The client returns the time set for the traffic light to be yellow, according to last tick. The method does not call the simulator.
@@ -620,6 +680,7 @@ class TrafficLight(TrafficSign):
         :return: float
         """
         ...
+
     def set_state(self, state: TrafficLightState):
         """
         Sets a given state to a traffic light actor.
@@ -627,6 +688,7 @@ class TrafficLight(TrafficSign):
         :param state: (TrafficLightState)
         """
         ...
+
     def set_green_time(self, green_time: float):
         """
 
@@ -634,6 +696,7 @@ class TrafficLight(TrafficSign):
         :param green_time: (float) Sets a given time for the green light to be active.
         """
         ...
+
     def set_red_time(self, red_time: float):
         """
         Sets a given time for the red state to be active.
@@ -641,6 +704,7 @@ class TrafficLight(TrafficSign):
         :param red_time: (float)
         """
         ...
+
     def set_yellow_time(self, yellow_time: float):
         """
         Sets a given time for the yellow light to be active.
@@ -648,6 +712,7 @@ class TrafficLight(TrafficSign):
         :param yellow_time: (float)
         """
         ...
+
     def get_affected_lane_waypoints(self) -> list[Waypoint]:
         """
         Returns a list of waypoints indicating the positions and lanes where the traffic light is having an effect.
@@ -655,6 +720,7 @@ class TrafficLight(TrafficSign):
         :return: list(carla.Waypoint)
         """
         ...
+
     def get_light_boxes(self) -> list[BoundingBox]:
         """
         Returns a list of the bounding boxes encapsulating each light box of the traffic light.
@@ -662,6 +728,7 @@ class TrafficLight(TrafficSign):
         :return: list(carla.BoundingBox)
         """
         ...
+
     def get_opendrive_id(self) -> str:
         """
         Returns the OpenDRIVE id of this traffic light.
@@ -669,6 +736,7 @@ class TrafficLight(TrafficSign):
         :return: str
         """
         ...
+
     def get_stop_waypoints(self) -> list[Waypoint]:
         """
         Returns a list of waypoints indicating the stop position for the traffic light. These waypoints are computed from the trigger boxes of the traffic light that indicate where a vehicle should stop.
@@ -676,6 +744,7 @@ class TrafficLight(TrafficSign):
         :return: list(carla.Waypoint)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -790,6 +859,7 @@ class Color:
         :param a: (int)
         """
         ...
+
     def __eq__(self, other: object):
         """
 
@@ -797,6 +867,7 @@ class Color:
         :param other: (Color)
         """
         ...
+
     def __ne__(self, other: object):
         """
 
@@ -804,6 +875,7 @@ class Color:
         :param other: (Color)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -838,6 +910,7 @@ class FloatColor:
         :param a: (float)
         """
         ...
+
     def __eq__(self, other: object):
         """
 
@@ -845,6 +918,7 @@ class FloatColor:
         :param other: (FloatColor)
         """
         ...
+
     def __ne__(self, other: object):
         """
 
@@ -873,6 +947,7 @@ class OpticalFlowPixel:
         :param y: (float)
         """
         ...
+
     def __eq__(self, other: object):
         """
 
@@ -880,6 +955,7 @@ class OpticalFlowPixel:
         :param other: (OpticalFlowPixel)
         """
         ...
+
     def __ne__(self, other: object):
         """
 
@@ -887,6 +963,7 @@ class OpticalFlowPixel:
         :param other: (OpticalFlowPixel)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -913,38 +990,47 @@ class ActorAttribute:
         Reads the attribute as boolean value.
         """
         ...
+
     def as_color(self):
         """
         Reads the attribute as carla.Color.
         """
         ...
+
     def as_float(self):
         """
         Reads the attribute as float.
         """
         ...
+
     def as_int(self):
         """
         Reads the attribute as int.
         """
         ...
+
     def as_str(self):
         """
         Reads the attribute as string.
         """
         ...
+
     def __bool__(self):
         """ """
         ...
+
     def __float__(self):
         """ """
         ...
+
     def __int__(self):
         """ """
         ...
+
     def __str__(self):
         """ """
         ...
+
     def __eq__(self, other: object) -> bool:
         """
         Returns true if this actor's attribute and `other` are the same.
@@ -954,6 +1040,7 @@ class ActorAttribute:
         :return: bool
         """
         ...
+
     def __ne__(self, other: object) -> bool:
         """
         Returns true if this actor's attribute and `other` are different.
@@ -963,6 +1050,7 @@ class ActorAttribute:
         :return: bool
         """
         ...
+
     def __nonzero__(self) -> bool:
         """
         Returns true if this actor's attribute is not zero or null.
@@ -991,6 +1079,7 @@ class ActorBlueprint:
         :return: bool
         """
         ...
+
     def has_tag(self, tag: str) -> bool:
         """
         Returns True if the blueprint has the specified `tag` listed.
@@ -1000,6 +1089,7 @@ class ActorBlueprint:
         :return: bool
         """
         ...
+
     def match_tags(self, wildcard_pattern: str) -> bool:
         """
         Returns True if any of the tags listed for this blueprint matches `wildcard_pattern`. Matching follows [fnmatch](https://docs.python.org/2/library/fnmatch.html) standard.
@@ -1009,6 +1099,7 @@ class ActorBlueprint:
         :return: bool
         """
         ...
+
     def get_attribute(self, id: str) -> ActorAttribute:
         """
         Returns the actor's attribute with `id` as identifier if existing.
@@ -1018,6 +1109,7 @@ class ActorBlueprint:
         :return: carla.ActorAttribute
         """
         ...
+
     def set_attribute(self, id: str, value: str):
         """
         If the `id` attribute is modifiable, changes its value to `value`.
@@ -1027,16 +1119,19 @@ class ActorBlueprint:
         :param value: (str) The new value for said attribute.
         """
         ...
+
     def __iter__(self):
         """
         Iterate over the carla.ActorAttribute that this blueprint has.
         """
         ...
+
     def __len__(self):
         """
         Returns the amount of attributes for this blueprint.
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -1057,6 +1152,7 @@ class BlueprintLibrary:
         :return: carla.BlueprintLibrary
         """
         ...
+
     def find(self, id: str) -> ActorBlueprint:
         """
         Returns the blueprint corresponding to that identifier.
@@ -1066,6 +1162,7 @@ class BlueprintLibrary:
         :return: carla.ActorBlueprint
         """
         ...
+
     def __getitem__(self, pos: int) -> ActorBlueprint:
         """
         Returns the blueprint stored in `pos` position inside the data structure containing them.
@@ -1075,11 +1172,13 @@ class BlueprintLibrary:
         :return: carla.ActorBlueprint
         """
         ...
+
     def __iter__(self):
         """
         Iterate over the carla.ActorBlueprint stored in the library.
         """
         ...
+
     def __len__(self) -> int:
         """
         Returns the amount of blueprints comprising the library.
@@ -1087,6 +1186,7 @@ class BlueprintLibrary:
         :return: int
         """
         ...
+
     def __str__(self) -> str:
         """
         Parses the identifiers for every blueprint to string.
@@ -1115,6 +1215,7 @@ class Client:
         :param worker_threads: (int) Number of working threads used for background updates. If 0, use all available concurrency.
         """
         ...
+
     def apply_batch(self, commands: list):
         """
         Executes a list of commands on a single simulation step and retrieves no information. If you need information about the response of each command, use the apply_batch_sync() method. [Here](https://github.com/carla-simulator/carla/blob/master/PythonAPI/examples/generate_traffic.py) is an example on how to delete the actors that appear in carla.ActorList all at once.
@@ -1122,6 +1223,7 @@ class Client:
         :param commands: (list) A list of commands to execute in batch. Each command is different and has its own parameters. They appear listed at the bottom of this page.
         """
         ...
+
     def apply_batch_sync(
         self, commands: list, due_tick_cue: bool = False
     ) -> list[command.Response]:
@@ -1135,6 +1237,7 @@ class Client:
         :return: list(command.Response)
         """
         ...
+
     def generate_opendrive_world(
         self,
         opendrive: str,
@@ -1153,6 +1256,7 @@ class Client:
         :param reset_settings: (bool) Option to reset the episode setting to default values, set to false to keep the current settings. This is useful to keep sync mode when changing map and to keep deterministic scenarios.
         """
         ...
+
     def load_world(
         self,
         map_name: str,
@@ -1171,6 +1275,7 @@ class Client:
         :param map_layers: (MapLayer) Layers of the map that will be loaded. By default all layers are loaded. This parameter works like a flag mask.
         """
         ...
+
     def reload_world(self, reset_settings: bool = True):
         """
         Reload the current world, note that a new world is created with default settings using the same map. All actors present in the world will be destroyed, __but__ traffic manager instances will stay alive.
@@ -1178,6 +1283,7 @@ class Client:
         :param reset_settings: (bool) Option to reset the episode setting to default values, set to false to keep the current settings. This is useful to keep sync mode when changing map and to keep deterministic scenarios.
         """
         ...
+
     def replay_file(
         self,
         name: str,
@@ -1200,6 +1306,7 @@ class Client:
         :param replay_sensors: (bool) Flag to enable or disable the spawn of sensors during playback.
         """
         ...
+
     def stop_replayer(self, keep_actors: bool):
         """
         Stop current replayer.
@@ -1207,6 +1314,7 @@ class Client:
         :param keep_actors: (bool) True if you want autoremove all actors from the replayer, or False to keep them.
         """
         ...
+
     def show_recorder_actors_blocked(
         self, filename: str, min_time: float, min_distance: float
     ) -> str:
@@ -1222,6 +1330,7 @@ class Client:
         :return: string
         """
         ...
+
     def show_recorder_collisions(
         self, filename: str, category1: str, category2: str
     ) -> str:
@@ -1244,6 +1353,7 @@ class Client:
                         :return: string
         """
         ...
+
     def show_recorder_file_info(self, filename: str, show_all: bool) -> str:
         """
         The information saved by the recorder will be parsed and shown in your terminal as text (frames, times, events, state, positions...). The information shown can be specified by using the `show_all` parameter. [Here](ref_recorder_binary_file_format.md) is some more information about how to read the recorder file.
@@ -1255,6 +1365,7 @@ class Client:
         :return: string
         """
         ...
+
     def start_recorder(self, filename: str, additional_data: bool = False):
         """
         Enables the recording feature, which will start saving every information possible needed by the server to replay the simulation.
@@ -1264,11 +1375,13 @@ class Client:
         :param additional_data: (bool) Enables or disable recording non-essential data for reproducing the simulation (bounding box location, physics control parameters, etc)
         """
         ...
+
     def stop_recorder(self):
         """
         Stops the recording in progress. If you specified a path in `filename`, the recording will be there. If not, look inside `CarlaUE4/Saved/`.
         """
         ...
+
     def get_available_maps(self) -> list[str]:
         """
                       Returns a list of strings containing the paths of the maps available on server. These paths are dynamic, they will be created during the simulation and so you will not find them when looking up in your files. One of the possible returns for this method would be:
@@ -1283,6 +1396,7 @@ class Client:
                       :return: list(str)
         """
         ...
+
     def get_client_version(self) -> str:
         """
         Returns the client libcarla version by consulting it in the "Version.h" file. Both client and server can use different libcarla versions but some issues may arise regarding unexpected incompatibilities.
@@ -1290,6 +1404,7 @@ class Client:
         :return: str
         """
         ...
+
     def get_server_version(self) -> str:
         """
         Returns the server libcarla version by consulting it in the "Version.h" file. Both client and server should use the same libcarla version.
@@ -1297,6 +1412,7 @@ class Client:
         :return: str
         """
         ...
+
     def get_trafficmanager(self, client_connection: int = 8000) -> TrafficManager:
         """
         Returns an instance of the traffic manager related to the specified port. If it does not exist, this will be created.
@@ -1306,6 +1422,7 @@ class Client:
         :return: carla.TrafficManager
         """
         ...
+
     def get_world(self) -> World:
         """
         Returns the world object currently active in the simulation. This world will be later used for example to load maps.
@@ -1313,6 +1430,7 @@ class Client:
         :return: carla.World
         """
         ...
+
     def set_replayer_time_factor(self, time_factor: float = 1.0):
         """
         When used, the time speed of the reenacted simulation is modified at will. It can be used several times while a playback is in curse.
@@ -1320,6 +1438,7 @@ class Client:
         :param time_factor: (float) 1.0 means normal time speed. Greater than 1.0 means fast motion (2.0 would be double speed) and lesser means slow motion (0.5 would be half speed).
         """
         ...
+
     def set_timeout(self, seconds: float):
         """
         Sets the maxixum time a network call is allowed before blocking it and raising a timeout exceeded error.
@@ -1327,6 +1446,7 @@ class Client:
         :param seconds: (float) New timeout value. Default is 5 seconds.
         """
         ...
+
     def set_replayer_ignore_hero(self, ignore_hero: bool):
         """
 
@@ -1334,6 +1454,7 @@ class Client:
         :param ignore_hero: (bool) Enables or disables playback of the hero vehicle during a playback of a recorded simulation.
         """
         ...
+
     def set_files_base_folder(self, path: str):
         """
 
@@ -1341,6 +1462,7 @@ class Client:
         :param path: (str) Specifies the base folder where the local cache for required files will be placed.
         """
         ...
+
     def get_required_files(self, folder: str, download: bool = True):
         """
         Asks the server which files are required by the client to use the current map. Option to download files automatically if they are not already in the cache.
@@ -1350,6 +1472,7 @@ class Client:
         :param download: (bool) If True, downloads files that are not already in cache.
         """
         ...
+
     def request_file(self, name: str):
         """
         Requests one of the required files returned by carla.Client.get_required_files.
@@ -1373,6 +1496,7 @@ class TrafficManager:
         :param enable: (bool) __True__ is default and enables lane changes. __False__ will disable them.
         """
         ...
+
     def collision_detection(
         self, reference_actor: Actor, other_actor: Actor, detect_collision: bool
     ):
@@ -1386,6 +1510,7 @@ class TrafficManager:
         :param detect_collision: (bool) __True__ is default and enables collisions. __False__ will disable them.
         """
         ...
+
     def distance_to_leading_vehicle(self, actor: Actor, distance: float):
         """
         Sets the minimum distance in meters that a vehicle has to keep with the others. The distance is in meters and will affect the minimum moving distance. It is computed from front to back of the vehicle objects.
@@ -1395,6 +1520,7 @@ class TrafficManager:
         :param distance: (float) Meters between both vehicles.
         """
         ...
+
     def force_lane_change(self, actor: Actor, direction: bool):
         """
         Forces a vehicle to change either to the lane on its left or right, if existing, as indicated in `direction`. This method applies the lane change no matter what, disregarding possible collisions.
@@ -1404,6 +1530,7 @@ class TrafficManager:
         :param direction: (bool) Destination lane. __True__ is the one on the right and __False__ is the left one.
         """
         ...
+
     def global_percentage_speed_difference(self, percentage: float):
         """
                         Sets the difference the vehicle's intended speed and its current speed limit. Speed limits can be exceeded by setting the `perc` to a negative value.
@@ -1412,6 +1539,7 @@ class TrafficManager:
                         :param percentage: (float) Percentage difference between intended speed and the current limit.
         """
         ...
+
     def global_lane_offset(self, offset: float):
         """
                         Sets a global lane offset displacement from the center line. Positive values imply a right offset while negative ones mean a left one.
@@ -1420,6 +1548,7 @@ class TrafficManager:
                         :param offset: (float) Lane offset displacement from the center line.
         """
         ...
+
     def ignore_lights_percentage(self, actor: Actor, perc: float):
         """
         During the traffic light stage, which runs every frame, this method sets the percent chance that traffic lights will be ignored for a vehicle.
@@ -1429,6 +1558,7 @@ class TrafficManager:
         :param perc: (float) Between 0 and 100. Amount of times traffic lights will be ignored.
         """
         ...
+
     def ignore_signs_percentage(self, actor: Actor, perc: float):
         """
         During the traffic light stage, which runs every frame, this method sets the percent chance that stop signs will be ignored for a vehicle.
@@ -1438,6 +1568,7 @@ class TrafficManager:
         :param perc: (float) Between 0 and 100. Amount of times stop signs will be ignored.
         """
         ...
+
     def ignore_vehicles_percentage(self, actor: Actor, perc: float):
         """
         During the collision detection stage, which runs every frame, this method sets a percent chance that collisions with another vehicle will be ignored for a vehicle.
@@ -1447,6 +1578,7 @@ class TrafficManager:
         :param perc: (float) Between 0 and 100. Amount of times collisions will be ignored.
         """
         ...
+
     def ignore_walkers_percentage(self, actor: Actor, perc: float):
         """
         During the collision detection stage, which runs every frame, this method sets a percent chance that collisions with walkers will be ignored for a vehicle.
@@ -1456,6 +1588,7 @@ class TrafficManager:
         :param perc: (float) Between 0 and 100. Amount of times collisions will be ignored.
         """
         ...
+
     def vehicle_percentage_speed_difference(self, actor: Actor, percentage: float):
         """
                         Sets the difference the vehicle's intended speed and its current speed limit. Speed limits can be exceeded by setting the `perc` to a negative value.
@@ -1466,6 +1599,7 @@ class TrafficManager:
                         :param percentage: (float) Percentage difference between intended speed and the current limit.
         """
         ...
+
     def vehicle_lane_offset(self, actor: Actor, offset: float):
         """
                         Sets a lane offset displacement from the center line. Positive values imply a right offset while negative ones mean a left one.
@@ -1476,6 +1610,7 @@ class TrafficManager:
                         :param offset: (float) Lane offset displacement from the center line.
         """
         ...
+
     def update_vehicle_lights(self, actor: Actor, do_update: bool):
         """
                         Sets if the Traffic Manager is responsible of updating the vehicle lights, or not.
@@ -1486,6 +1621,7 @@ class TrafficManager:
                         :param do_update: (bool) If __True__ the traffic manager will manage the vehicle lights for the specified vehicle.
         """
         ...
+
     def get_port(self) -> np.uint16:
         """
         Returns the port where the Traffic Manager is connected. If the object is a TM-Client, it will return the port of its TM-Server. Read the [documentation](#adv_traffic_manager.md#multiclient-and-multitm-management) to learn the difference.
@@ -1493,6 +1629,7 @@ class TrafficManager:
         :return: uint16
         """
         ...
+
     def set_global_distance_to_leading_vehicle(self, distance: float):
         """
         Sets the minimum distance in meters that vehicles have to keep with the rest. The distance is in meters and will affect the minimum moving distance. It is computed from center to center of the vehicle objects.
@@ -1500,6 +1637,7 @@ class TrafficManager:
         :param distance: (float) Meters between vehicles.
         """
         ...
+
     def set_desired_speed(self, actor: Actor, speed: float):
         """
         Sets the speed of a vehicle to the specified value.
@@ -1509,6 +1647,7 @@ class TrafficManager:
         :param speed: (float) Desired speed at which the vehicle will move.
         """
         ...
+
     def set_hybrid_physics_mode(self, enabled: bool = False):
         """
         Enables or disables the hybrid physics mode. In this mode, vehicle's farther than a certain radius from the ego vehicle will have their physics disabled. Computation cost will be reduced by not calculating vehicle dynamics. Vehicles will be teleported.
@@ -1516,6 +1655,7 @@ class TrafficManager:
         :param enabled: (bool) If __True__, enables the hybrid physics.
         """
         ...
+
     def set_hybrid_physics_radius(self, r: float = 50.0):
         """
         With hybrid physics on, changes the radius of the area of influence where physics are enabled.
@@ -1523,6 +1663,7 @@ class TrafficManager:
         :param r: (float) New radius where physics are enabled.
         """
         ...
+
     def set_osm_mode(self, mode_switch: bool = True):
         """
         Enables or disables the OSM mode. This mode allows the user to run TM in a map created with the [OSM feature](tuto_G_openstreetmap.md). These maps allow having dead-end streets. Normally, if vehicles cannot find the next waypoint, TM crashes. If OSM mode is enabled, it will show a warning, and destroy vehicles when necessary.
@@ -1530,6 +1671,7 @@ class TrafficManager:
         :param mode_switch: (bool) If __True__, the OSM mode is enabled.
         """
         ...
+
     def keep_right_rule_percentage(self, actor: Actor, perc: float):
         """
         During the localization stage, this method sets a percent chance that vehicle will follow the *keep right* rule, and stay in the right lane.
@@ -1539,6 +1681,7 @@ class TrafficManager:
         :param perc: (float) Between 0 and 100. Amount of times the vehicle will follow the keep right rule.
         """
         ...
+
     def set_random_device_seed(self, value: int):
         """
         Sets a specific random seed for the Traffic Manager, thereby setting it to be deterministic.
@@ -1546,6 +1689,7 @@ class TrafficManager:
         :param value: (int) Seed value for the random number generation of the Traffic Manager.
         """
         ...
+
     def set_synchronous_mode(self, mode_switch: bool = True):
         """
         Sets the Traffic Manager to [synchronous mode](adv_traffic_manager.md#synchronous-mode). In a [multiclient situation](adv_traffic_manager.md#multiclient), only the TM-Server can tick. Similarly, in a [multiTM situation](adv_traffic_manager.md#multitm), only one TM-Server must tick. Use this method in the client that does the world tick, and right after setting the world to synchronous mode, to set which TM will be the master while in sync.
@@ -1555,6 +1699,7 @@ class TrafficManager:
         :param mode_switch: (bool) If __True__, the TM synchronous mode is enabled.
         """
         ...
+
     def set_respawn_dormant_vehicles(self, mode_switch: bool = False):
         """
         If __True__, vehicles in large maps will respawn near the hero vehicle when they become dormant. Otherwise, they will stay dormant until they are within `actor_active_distance` of the hero vehicle again.
@@ -1562,6 +1707,7 @@ class TrafficManager:
         :param mode_switch: (bool)
         """
         ...
+
     def set_boundaries_respawn_dormant_vehicles(
         self, lower_bound: float = 25.0, upper_bound: float = 50.0
     ):
@@ -1575,6 +1721,7 @@ class TrafficManager:
         :param upper_bound: (float) The maximum distance in meters from the hero vehicle that a dormant actor will be respawned.
         """
         ...
+
     def set_path(self, actor: Actor, path: list):
         """
         Sets a list of locations for a vehicle to follow while controlled by the Traffic Manager.
@@ -1586,6 +1733,7 @@ class TrafficManager:
         :param path: (list) The list of carla.Locations for the actor to follow
         """
         ...
+
     def set_route(self, actor: Actor, path: list):
         """
         Sets a list of route instructions for a vehicle to follow while controlled by the Traffic Manager. The possible route instructions are 'Left', 'Right', 'Straight'.
@@ -1597,6 +1745,7 @@ class TrafficManager:
         :param path: (list) The list of route instructions (string) for the vehicle to follow.
         """
         ...
+
     def get_next_action(self, actor: Actor) -> str:
         """
         Returns the next known road option and waypoint that an actor controlled by the Traffic Manager will follow.
@@ -1606,6 +1755,7 @@ class TrafficManager:
         :return: list of two elements - [Road option (string e.g. 'Left', 'Right', 'Straight'), Next waypoint (carla.Waypoint)]
         """
         ...
+
     def get_all_actions(self, actor: Actor) -> str:
         """
         Returns all known actions (i.e. road options and waypoints) that an actor controlled by the Traffic Manager will perform in its next steps.
@@ -1615,6 +1765,7 @@ class TrafficManager:
         :return: list of lists with each element as follows - [Road option (string e.g. 'Left', 'Right', 'Straight'), Next waypoint (carla.Waypoint)]
         """
         ...
+
     def random_left_lanechange_percentage(self, actor: Actor, percentage: float):
         """
         Adjust probability that in each timestep the actor will perform a left lane change, dependent on lane change availability.
@@ -1624,6 +1775,7 @@ class TrafficManager:
         :param percentage: (float) The probability of lane change in percentage units (between 0 and 100)
         """
         ...
+
     def random_right_lanechange_percentage(self, actor: Actor, percentage: float):
         """
         Adjust probability that in each timestep the actor will perform a right lane change, dependent on lane change availability.
@@ -1743,6 +1895,7 @@ class VehicleControl:
         :param gear: (int)
         """
         ...
+
     def __eq__(self, other: object):
         """
 
@@ -1750,6 +1903,7 @@ class VehicleControl:
         :param other: (VehicleControl)
         """
         ...
+
     def __ne__(self, other: object):
         """
 
@@ -1757,6 +1911,7 @@ class VehicleControl:
         :param other: (VehicleControl)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -1793,6 +1948,7 @@ class WalkerControl:
         :param jump: (bool)
         """
         ...
+
     def __eq__(self, other: object):
         """
         Compares every variable with `other` and returns True if these are all the same.
@@ -1800,6 +1956,7 @@ class WalkerControl:
         :param other: (WalkerControl)
         """
         ...
+
     def __ne__(self, other: object):
         """
         Compares every variable with `other` and returns True if any of these differ.
@@ -1807,6 +1964,7 @@ class WalkerControl:
         :param other: (WalkerControl)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -1844,6 +2002,7 @@ class WalkerBoneControlIn:
         :param list(name,transform): (tuple)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -1875,6 +2034,7 @@ class GearPhysicsControl:
         :param up_ratio: (float)
         """
         ...
+
     def __eq__(self, other: object):
         """
 
@@ -1882,6 +2042,7 @@ class GearPhysicsControl:
         :param other: (GearPhysicsControl)
         """
         ...
+
     def __ne__(self, other: object):
         """
 
@@ -1889,6 +2050,7 @@ class GearPhysicsControl:
         :param other: (GearPhysicsControl)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -2007,6 +2169,7 @@ class VehiclePhysicsControl:
         :param mass: (float)
         """
         ...
+
     def __eq__(self, other: object):
         """
 
@@ -2014,6 +2177,7 @@ class VehiclePhysicsControl:
         :param other: (VehiclePhysicsControl)
         """
         ...
+
     def __ne__(self, other: object):
         """
 
@@ -2021,6 +2185,7 @@ class VehiclePhysicsControl:
         :param other: (VehiclePhysicsControl)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -2088,6 +2253,7 @@ class WheelPhysicsControl:
         :param position: (Vector3D)
         """
         ...
+
     def __eq__(self, other: WheelPhysicsControl):
         """
 
@@ -2095,6 +2261,7 @@ class WheelPhysicsControl:
         :param other: (WheelPhysicsControl)
         """
         ...
+
     def __ne__(self, other: WheelPhysicsControl):
         """
 
@@ -2102,6 +2269,7 @@ class WheelPhysicsControl:
         :param other: (WheelPhysicsControl)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -2126,6 +2294,7 @@ class Vector2D:
         :param y: (float)
         """
         ...
+
     def length(self) -> float:
         """
         Computes the length of the vector.
@@ -2133,6 +2302,7 @@ class Vector2D:
         :return: float
         """
         ...
+
     def squared_length(self) -> float:
         """
         Computes the squared length of the vector.
@@ -2140,6 +2310,7 @@ class Vector2D:
         :return: float
         """
         ...
+
     def make_unit_vector(self) -> Vector3D:
         """
         Returns a vector with the same direction and unitary length.
@@ -2147,6 +2318,7 @@ class Vector2D:
         :return: carla.Vector3D
         """
         ...
+
     def __add__(self, other: Vector2D):
         """
 
@@ -2154,6 +2326,7 @@ class Vector2D:
         :param other: (Vector2D)
         """
         ...
+
     def __sub__(self, other: Vector2D):
         """
 
@@ -2161,6 +2334,7 @@ class Vector2D:
         :param other: (Vector2D)
         """
         ...
+
     def __mul__(self, other: Vector2D):
         """
 
@@ -2168,6 +2342,7 @@ class Vector2D:
         :param other: (Vector2D)
         """
         ...
+
     def __truediv__(self, other: Vector2D):
         """
 
@@ -2175,6 +2350,7 @@ class Vector2D:
         :param other: (Vector2D)
         """
         ...
+
     def __eq__(self, other: Vector2D) -> bool:
         """
         Returns __True__ if values for every axis are equal.
@@ -2184,6 +2360,7 @@ class Vector2D:
         :return: bool
         """
         ...
+
     def __ne__(self, bool: Vector2D) -> bool:
         """
         Returns __True__ if the value for any axis is different.
@@ -2193,6 +2370,7 @@ class Vector2D:
         :return: bool
         """
         ...
+
     def __str__(self) -> str:
         """
         Returns the axis values for the vector parsed as string.
@@ -2226,6 +2404,7 @@ class Vector3D:
         :param z: (float)
         """
         ...
+
     def length(self) -> float:
         """
         Computes the length of the vector.
@@ -2233,6 +2412,7 @@ class Vector3D:
         :return: float
         """
         ...
+
     def squared_length(self) -> float:
         """
         Computes the squared length of the vector.
@@ -2240,6 +2420,7 @@ class Vector3D:
         :return: float
         """
         ...
+
     def make_unit_vector(self) -> Vector3D:
         """
         Returns a vector with the same direction and unitary length.
@@ -2247,6 +2428,7 @@ class Vector3D:
         :return: carla.Vector3D
         """
         ...
+
     def cross(self, vector: Vector3D) -> Vector3D:
         """
         Computes the cross product between two vectors.
@@ -2256,6 +2438,7 @@ class Vector3D:
         :return: carla.Vector3D
         """
         ...
+
     def dot(self, vector: Vector3D) -> float:
         """
         Computes the dot product between two vectors.
@@ -2265,6 +2448,7 @@ class Vector3D:
         :return: float
         """
         ...
+
     def distance(self, vector: Vector3D) -> float:
         """
         Computes the distance between two vectors.
@@ -2274,6 +2458,7 @@ class Vector3D:
         :return: float
         """
         ...
+
     def distance_squared(self, vector: Vector3D) -> float:
         """
         Computes the squared distance between two vectors.
@@ -2283,6 +2468,7 @@ class Vector3D:
         :return: float
         """
         ...
+
     def dot_2d(self, vector: Vector3D) -> float:
         """
         Computes the 2-dimensional dot product between two vectors.
@@ -2292,6 +2478,7 @@ class Vector3D:
         :return: float
         """
         ...
+
     def distance_2d(self, vector: Vector3D) -> float:
         """
         Computes the 2-dimensional distance between two vectors.
@@ -2301,6 +2488,7 @@ class Vector3D:
         :return: float
         """
         ...
+
     def distance_squared_2d(self, vector: Vector3D) -> float:
         """
         Computes the 2-dimensional squared distance between two vectors.
@@ -2310,6 +2498,7 @@ class Vector3D:
         :return: float
         """
         ...
+
     def __add__(self, other: Vector3D):
         """
 
@@ -2317,6 +2506,7 @@ class Vector3D:
         :param other: (Vector3D)
         """
         ...
+
     def __sub__(self, other: Vector3D):
         """
 
@@ -2324,6 +2514,7 @@ class Vector3D:
         :param other: (Vector3D)
         """
         ...
+
     def __mul__(self, other: Vector3D):
         """
 
@@ -2331,6 +2522,7 @@ class Vector3D:
         :param other: (Vector3D)
         """
         ...
+
     def __truediv__(self, other: Vector3D):
         """
 
@@ -2338,6 +2530,7 @@ class Vector3D:
         :param other: (Vector3D)
         """
         ...
+
     def __eq__(self, other: Vector3D) -> bool:
         """
         Returns __True__ if values for every axis are equal.
@@ -2347,6 +2540,7 @@ class Vector3D:
         :return: bool
         """
         ...
+
     def __ne__(self, other: Vector3D) -> bool:
         """
         Returns __True__ if the value for any axis is different.
@@ -2356,6 +2550,7 @@ class Vector3D:
         :return: bool
         """
         ...
+
     def __str__(self) -> str:
         """
         Returns the axis values for the vector parsed as string.
@@ -2363,6 +2558,7 @@ class Vector3D:
         :return: str
         """
         ...
+
     def __abs__(self) -> Vector3D:
         """
         Returns a Vector3D with the absolute value of the components x, y and z.
@@ -2396,6 +2592,7 @@ class Location(Vector3D):
         :param z: (float)
         """
         ...
+
     def distance(self, location: Location) -> float:
         """
         Returns Euclidean distance from this location to another one.
@@ -2405,6 +2602,7 @@ class Location(Vector3D):
         :return: float
         """
         ...
+
     def __eq__(self, other: Location) -> bool:
         """
         Returns __True__ if both locations are the same point in space.
@@ -2414,6 +2612,7 @@ class Location(Vector3D):
         :return: bool
         """
         ...
+
     def __ne__(self, other: Location) -> bool:
         """
         Returns __True__ if both locations are different points in space.
@@ -2423,6 +2622,7 @@ class Location(Vector3D):
         :return: bool
         """
         ...
+
     def __str__(self) -> str:
         """
         Parses the axis' values to string.
@@ -2430,6 +2630,7 @@ class Location(Vector3D):
         :return: str
         """
         ...
+
     def __abs__(self) -> Location:
         """
         Returns a Location with the absolute value of the components x, y and z.
@@ -2466,6 +2667,7 @@ class Rotation:
         :param roll: (float) X-axis rotation angle.
         """
         ...
+
     def get_forward_vector(self) -> Vector3D:
         """
         Computes the vector pointing forward according to the rotation of the object.
@@ -2473,6 +2675,7 @@ class Rotation:
         :return: carla.Vector3D
         """
         ...
+
     def get_right_vector(self) -> Vector3D:
         """
         Computes the vector pointing to the right according to the rotation of the object.
@@ -2480,6 +2683,7 @@ class Rotation:
         :return: carla.Vector3D
         """
         ...
+
     def get_up_vector(self) -> Vector3D:
         """
         Computes the vector pointing upwards according to the rotation of the object.
@@ -2487,6 +2691,7 @@ class Rotation:
         :return: carla.Vector3D
         """
         ...
+
     def __eq__(self, other: Rotation) -> bool:
         """
         Returns __True__ if both rotations represent the same orientation for every axis.
@@ -2496,6 +2701,7 @@ class Rotation:
         :return: bool
         """
         ...
+
     def __ne__(self, other: Rotation) -> bool:
         """
         Returns __True__ if both rotations represent the same orientation for every axis.
@@ -2505,6 +2711,7 @@ class Rotation:
         :return: bool
         """
         ...
+
     def __str__(self):
         """
         Parses the axis' orientations to string.
@@ -2531,6 +2738,7 @@ class Transform:
         :param rotation: (Rotation)
         """
         ...
+
     def transform(self, in_point: Location):
         """
         Translates a 3D point from local to global coordinates using the current transformation as frame of reference.
@@ -2538,6 +2746,7 @@ class Transform:
         :param in_point: (Location) Location in the space to which the transformation will be applied.
         """
         ...
+
     def get_forward_vector(self) -> Vector3D:
         """
         Computes a forward vector using the rotation of the object.
@@ -2545,6 +2754,7 @@ class Transform:
         :return: carla.Vector3D
         """
         ...
+
     def get_right_vector(self) -> Vector3D:
         """
         Computes a right vector using the rotatio of the object.
@@ -2552,6 +2762,7 @@ class Transform:
         :return: carla.Vector3D
         """
         ...
+
     def get_up_vector(self) -> Vector3D:
         """
         Computes an up vector using the rotation of the object.
@@ -2559,6 +2770,7 @@ class Transform:
         :return: carla.Vector3D
         """
         ...
+
     def get_matrix(self) -> list[list[float]]:
         """
         Computes the 4-matrix representation of the transformation.
@@ -2566,6 +2778,7 @@ class Transform:
         :return: list(list(float))
         """
         ...
+
     def get_inverse_matrix(self) -> list[list[float]]:
         """
         Computes the 4-matrix representation of the inverse transformation.
@@ -2573,6 +2786,7 @@ class Transform:
         :return: list(list(float))
         """
         ...
+
     def __eq__(self, other: Transform) -> bool:
         """
         Returns __True__ if both location and rotation are equal for this and `other`.
@@ -2582,6 +2796,7 @@ class Transform:
         :return: bool
         """
         ...
+
     def __ne__(self, other: object) -> bool:
         """
         Returns __True__ if any location and rotation are not equal for this and `other`.
@@ -2591,6 +2806,7 @@ class Transform:
         :return: bool
         """
         ...
+
     def __str__(self) -> str:
         """
         Parses both location and rotation to string.
@@ -2623,6 +2839,7 @@ class BoundingBox:
         :param extent: (Vector3D) Vector containing half the size of the box for every axis.
         """
         ...
+
     def contains(self, world_point: Location, transform: Transform) -> bool:
         """
         Returns **True** if a point passed in world space is inside this bounding box.
@@ -2634,6 +2851,7 @@ class BoundingBox:
         :return: bool
         """
         ...
+
     def get_local_vertices(self) -> list[Location]:
         """
         Returns a list containing the locations of this object's vertices in local space.
@@ -2641,6 +2859,7 @@ class BoundingBox:
         :return: list(carla.Location)
         """
         ...
+
     def get_world_vertices(self, transform: Transform) -> list[Location]:
         """
         Returns a list containing the locations of this object's vertices in world space.
@@ -2650,6 +2869,7 @@ class BoundingBox:
         :return: list(carla.Location)
         """
         ...
+
     def __eq__(self, other: object) -> bool:
         """
         Returns true if both location and extent are equal for this and `other`.
@@ -2659,6 +2879,7 @@ class BoundingBox:
         :return: bool
         """
         ...
+
     def __ne__(self, other: object) -> bool:
         """
         Returns true if either location or extent are different for this and `other`.
@@ -2668,6 +2889,7 @@ class BoundingBox:
         :return: bool
         """
         ...
+
     def __str__(self) -> str:
         """
         Parses the location and extent of the bounding box to string.
@@ -2703,6 +2925,7 @@ class GeoLocation:
         :param altitude: (float)
         """
         ...
+
     def __eq__(self, other: object):
         """
 
@@ -2710,6 +2933,7 @@ class GeoLocation:
         :param other: (GeoLocation)
         """
         ...
+
     def __ne__(self, other: object):
         """
 
@@ -2717,6 +2941,7 @@ class GeoLocation:
         :param other: (GeoLocation)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -2812,11 +3037,13 @@ class Light:
         Switches off the light.
         """
         ...
+
     def turn_on(self):
         """
         Switches on the light.
         """
         ...
+
     def set_color(self, color: Color):
         """
         Changes the color of the light to `color`.
@@ -2824,6 +3051,7 @@ class Light:
         :param color: (Color)
         """
         ...
+
     def set_intensity(self, intensity: float):
         """
         Changes the intensity of the light to `intensity`.
@@ -2831,6 +3059,7 @@ class Light:
         :param intensity: (float)
         """
         ...
+
     def set_light_group(self, light_group: LightGroup):
         """
         Changes the light to the group `light_group`.
@@ -2838,6 +3067,7 @@ class Light:
         :param light_group: (LightGroup)
         """
         ...
+
     def set_light_state(self, light_state: LightState):
         """
         Changes the state of the light to `light_state`. This may change attributes, group and turn the light on/off all at once.
@@ -2862,6 +3092,7 @@ class LightManager:
         :return: list(bool)
         """
         ...
+
     def turn_off(self, lights: list[Light]):
         """
         Switches off all the lights in `lights`.
@@ -2869,6 +3100,7 @@ class LightManager:
         :param lights: (list[Light]) List of lights to be switched off.
         """
         ...
+
     def turn_on(self, lights: list[Light]):
         """
         Switches on all the lights in `lights`.
@@ -2876,6 +3108,7 @@ class LightManager:
         :param lights: (list[Light]) List of lights to be switched on.
         """
         ...
+
     def get_all_lights(self, light_group: Optional[LightGroup] = None) -> list[Light]:
         """
         Returns a list containing the lights in a certain group. By default, the group is `None`.
@@ -2885,6 +3118,7 @@ class LightManager:
         :return: list(carla.Light)
         """
         ...
+
     def get_color(self, lights: list[Light]) -> list[Color]:
         """
         Returns a list with the colors of every element in `lights`.
@@ -2894,6 +3128,7 @@ class LightManager:
         :return: list(carla.Color)
         """
         ...
+
     def get_intensity(self, lights: list[Light]) -> list[float]:
         """
         Returns a list with the intensity of every element in `lights`.
@@ -2903,6 +3138,7 @@ class LightManager:
         :return: list(float)
         """
         ...
+
     def get_light_group(self, lights: list[Light]) -> list[LightGroup]:
         """
         Returns a list with the group of every element in `lights`.
@@ -2912,6 +3148,7 @@ class LightManager:
         :return: list(carla.LightGroup)
         """
         ...
+
     def get_light_state(self, lights: list[Light]) -> list[LightState]:
         """
         Returns a list with the state of all the attributes of every element in `lights`.
@@ -2921,6 +3158,7 @@ class LightManager:
         :return: list(carla.LightState)
         """
         ...
+
     def get_turned_off_lights(self, light_group: LightGroup) -> list[Light]:
         """
         Returns a list containing lights switched off in the scene, filtered by group.
@@ -2930,6 +3168,7 @@ class LightManager:
         :return: list(carla.Light)
         """
         ...
+
     def get_turned_on_lights(self, light_group: LightGroup) -> list[Light]:
         """
         Returns a list containing lights switched on in the scene, filtered by group.
@@ -2939,6 +3178,7 @@ class LightManager:
         :return: list(carla.Light)
         """
         ...
+
     def set_active(self, lights: list[Light], active: list[bool]):
         """
         Switches on/off the elements in `lights`.
@@ -2948,6 +3188,7 @@ class LightManager:
         :param active: (list[bool]) List of booleans to be applied.
         """
         ...
+
     def set_color(self, lights: list[Light], color: Color):
         """
         Changes the color of the elements in `lights` to `color`.
@@ -2957,6 +3198,7 @@ class LightManager:
         :param color: (Color) Color to be applied.
         """
         ...
+
     def set_colors(self, lights: list[Light], colors: list[Color]):
         """
         Changes the color of each element in `lights` to the corresponding in `colors`.
@@ -2966,6 +3208,7 @@ class LightManager:
         :param colors: (list[Color]) List of colors to be applied.
         """
         ...
+
     def set_intensity(self, lights: list[Light], intensity: float):
         """
         Changes the intensity of every element in `lights` to `intensity`.
@@ -2975,6 +3218,7 @@ class LightManager:
         :param intensity: (float) Intensity to be applied.
         """
         ...
+
     def set_intensities(self, lights: list[Light], intensities: list[float]):
         """
         Changes the intensity of each element in `lights` to the corresponding in `intensities`.
@@ -2984,6 +3228,7 @@ class LightManager:
         :param intensities: (list[float]) List of intensities to be applied.
         """
         ...
+
     def set_light_group(self, lights: list[Light], light_group: LightGroup):
         """
         Changes the group of every element in `lights` to `light_group`.
@@ -2993,6 +3238,7 @@ class LightManager:
         :param light_group: (LightGroup) Group to be applied.
         """
         ...
+
     def set_light_groups(self, lights: list[Light], light_groups: list[LightGroup]):
         """
         Changes the group of each element in `lights` to the corresponding in `light_groups`.
@@ -3002,6 +3248,7 @@ class LightManager:
         :param light_groups: (list[LightGroup]) List of groups to be applied.
         """
         ...
+
     def set_light_state(self, lights: list[Light], light_state: LightState):
         """
         Changes the state of the attributes of every element in `lights` to `light_state`.
@@ -3011,6 +3258,7 @@ class LightManager:
         :param light_state: (LightState) State of the attributes to be applied.
         """
         ...
+
     def set_light_states(self, lights: list[Light], light_states: list[LightState]):
         """
         Changes the state of the attributes of each element in `lights` to the corresponding in `light_states`.
@@ -3020,6 +3268,7 @@ class LightManager:
         :param light_states: (list[LightState]) List of state of the attributes to be applied.
         """
         ...
+
     def set_day_night_cycle(self, active: bool):
         """
         All scene lights have a day-night cycle, automatically turning on and off with the altitude of the sun. This interferes in cases where full control of the scene lights is required, so setting this to __False__ deactivates it. It can reactivated by setting it to __True__.
@@ -3199,6 +3448,7 @@ class Map:
         :return: list(carla.Transform)
         """
         ...
+
     def generate_waypoints(self, distance: float) -> list[Waypoint]:
         """
         Returns a list of waypoints with a certain distance between them for every lane and centered inside of it. Waypoints are not listed in any particular order. Remember that waypoints closer than 2cm within the same road, section and lane will have the same identificator.
@@ -3208,6 +3458,7 @@ class Map:
         :return: list(carla.Waypoint)
         """
         ...
+
     def save_to_disk(self, path: Any):
         """
         Saves the .xodr OpenDRIVE file of the current map to disk.
@@ -3215,6 +3466,7 @@ class Map:
         :param path: () Path where the file will be saved.
         """
         ...
+
     def to_opendrive(self) -> str:
         """
         Returns the .xodr OpenDRIVe file of the current map as string.
@@ -3222,6 +3474,7 @@ class Map:
         :return: str
         """
         ...
+
     def transform_to_geolocation(self, location: Location) -> GeoLocation:
         """
         Converts a given `location`, a point in the simulation, to a carla.GeoLocation, which represents world coordinates. The geographical location of the map is defined inside OpenDRIVE within the tag <georeference>.
@@ -3231,6 +3484,7 @@ class Map:
         :return: carla.GeoLocation
         """
         ...
+
     def get_all_landmarks(self) -> list[Landmark]:
         """
         Returns all the landmarks in the map. Landmarks retrieved using this method have a __null__ waypoint.
@@ -3238,6 +3492,7 @@ class Map:
         :return: list(carla.Landmark)
         """
         ...
+
     def get_all_landmarks_from_id(self, opendrive_id: str) -> list[Landmark]:
         """
         Returns the landmarks with a certain OpenDRIVE ID. Landmarks retrieved using this method have a __null__ waypoint.
@@ -3247,6 +3502,7 @@ class Map:
         :return: list(carla.Landmark)
         """
         ...
+
     def get_all_landmarks_of_type(self, type: str) -> list[Landmark]:
         """
         Returns the landmarks of a specific type. Landmarks retrieved using this method have a __null__ waypoint.
@@ -3256,6 +3512,7 @@ class Map:
         :return: list(carla.Landmark)
         """
         ...
+
     def get_landmark_group(self, landmark: Landmark) -> list[Landmark]:
         """
         Returns the landmarks in the same group as the specified landmark (including itself). Returns an empty list if the landmark does not belong to any group.
@@ -3265,6 +3522,7 @@ class Map:
         :return: list(carla.Landmark)
         """
         ...
+
     def get_spawn_points(self) -> list[Transform]:
         """
         Returns a list of recommendations made by the creators of the map to be used as spawning points for the vehicles. The list includes carla.Transform objects with certain location and orientation. Said locations are slightly on-air in order to avoid Z-collisions, so vehicles fall for a bit before starting their way.
@@ -3272,6 +3530,7 @@ class Map:
         :return: list(carla.Transform)
         """
         ...
+
     def get_topology(self) -> str:
         """
         Returns a list of tuples describing a minimal graph of the topology of the OpenDRIVE file. The tuples contain pairs of waypoints located either at the point a road begins or ends. The first one is the origin and the second one represents another road end that can be reached. This graph can be loaded into [NetworkX](https://networkx.github.io/) to work with. Output could look like this: [(w0, w1), (w0, w2), (w1, w3), (w2, w3), (w0, w4)].
@@ -3279,6 +3538,7 @@ class Map:
         :return: list(tuple(carla.Waypoint, carla.Waypoint))
         """
         ...
+
     def get_waypoint(
         self,
         location: Location,
@@ -3298,6 +3558,7 @@ class Map:
                        :return: carla.Waypoint
         """
         ...
+
     def get_waypoint_xodr(self, road_id: int, lane_id: int, s: float) -> Waypoint:
         """
         Returns a waypoint if all the parameters passed are correct. Otherwise, returns __None__.
@@ -3311,6 +3572,7 @@ class Map:
         :return: carla.Waypoint
         """
         ...
+
     def get_crosswalks(self) -> list[Location]:
         """
         Returns a list of locations with all crosswalk zones in the form of closed polygons. The first point is repeated, symbolizing where the polygon begins and ends.
@@ -3318,6 +3580,7 @@ class Map:
         :return: list(carla.Location)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -3390,6 +3653,7 @@ class Waypoint:
                         :return: list(carla.Waypoint)
         """
         ...
+
     def next_until_lane_end(self, distance: float) -> list[Waypoint]:
         """
         Returns a list of waypoints from this to the end of the lane separated by a certain `distance`.
@@ -3399,6 +3663,7 @@ class Waypoint:
         :return: list(carla.Waypoint)
         """
         ...
+
     def previous(self, distance: float) -> list[Waypoint]:
         """
                         This method does not return the waypoint previously visited by an actor, but a list of waypoints at an approximate `distance` but in the opposite direction of the lane. Similarly to **next()**, it takes into account the road and its possible deviations without performing any lane change and returns one waypoint per option.
@@ -3409,6 +3674,7 @@ class Waypoint:
                         :return: list(carla.Waypoint)
         """
         ...
+
     def previous_until_lane_start(self, distance: float) -> list[Waypoint]:
         """
         Returns a list of waypoints from this to the start of the lane separated by a certain `distance`.
@@ -3418,6 +3684,7 @@ class Waypoint:
         :return: list(carla.Waypoint)
         """
         ...
+
     def get_junction(self) -> Junction:
         """
         If the waypoint belongs to a junction this method returns the asociated junction object. Otherwise returns null.
@@ -3425,6 +3692,7 @@ class Waypoint:
         :return: carla.Junction
         """
         ...
+
     def get_landmarks(
         self, distance: float, stop_at_junction: bool = False
     ) -> list[Landmark]:
@@ -3438,6 +3706,7 @@ class Waypoint:
         :return: list(carla.Landmark)
         """
         ...
+
     def get_landmarks_of_type(
         self, distance: float, type: str, stop_at_junction: bool = False
     ) -> list[Landmark]:
@@ -3453,6 +3722,7 @@ class Waypoint:
         :return: list(carla.Landmark)
         """
         ...
+
     def get_left_lane(self) -> Waypoint:
         """
                         Generates a Waypoint at the center of the left lane based on the direction of the current Waypoint, taking into account if the lane change is allowed in this location.
@@ -3461,6 +3731,7 @@ class Waypoint:
                         :return: carla.Waypoint
         """
         ...
+
     def get_right_lane(self) -> Waypoint:
         """
                         Generates a waypoint at the center of the right lane based on the direction of the current waypoint, taking into account if the lane change is allowed in this location.
@@ -3469,6 +3740,7 @@ class Waypoint:
                         :return: carla.Waypoint
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -3757,6 +4029,7 @@ class Osm2OdrSettings:
         :param way_types: (list[str]) The list of road types.
         """
         ...
+
     def set_traffic_light_excluded_way_types(self, way_types: list[str]):
         """
         Defines the OpenStreetMaps road types that will not generate traffic lights even if `generate_traffic_lights` is enabled. By default the road types excluded are `motorway_link, primary_link, secondary_link, tertiary_link`
@@ -3796,11 +4069,13 @@ class Sensor(Actor):
         :param callback: (function) The called function with one argument containing the sensor data.
         """
         ...
+
     def stop(self):
         """
         Commands the sensor to stop listening for data.
         """
         ...
+
     def listen_to_gbuffer(self, gbuffer_id: GBufferTextureID, callback: function):
         """
         The function the sensor will be calling to every time the desired GBuffer texture is received. This function needs for an argument containing an object type carla.SensorData to work with.
@@ -3810,6 +4085,7 @@ class Sensor(Actor):
         :param callback: (function) The called function with one argument containing the received GBuffer texture.
         """
         ...
+
     def is_listening_gbuffer(self, gbuffer_id: GBufferTextureID):
         """
         Returns whether the sensor is in a listening state for a specific GBuffer texture.
@@ -3817,6 +4093,7 @@ class Sensor(Actor):
         :param gbuffer_id: (GBufferTextureID) The ID of the target Unreal Engine GBuffer texture.
         """
         ...
+
     def stop_gbuffer(self, gbuffer_id: GBufferTextureID):
         """
         Commands the sensor to stop listening for the specified GBuffer texture.
@@ -3824,6 +4101,7 @@ class Sensor(Actor):
         :param gbuffer_id: (GBufferTextureID) The ID of the Unreal Engine GBuffer texture.
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -3857,16 +4135,19 @@ class RssSensor(Sensor):
         :param routing_target: (Transform) New target point for the route. Choose these after the intersections to force the route to take the desired turn.
         """
         ...
+
     def reset_routing_targets(self):
         """
         Erases the targets that have been appended to the route.
         """
         ...
+
     def drop_route(self):
         """
         Discards the current route. If there are targets remaining in **routing_targets**, creates a new route using those. Otherwise, a new route is created at random.
         """
         ...
+
     def register_actor_constellation_callback(self, callback: Any):
         """
         Register a callback to customize a carla.RssActorConstellationResult. By this callback the settings of RSS parameters are done per actor constellation and the settings (ego_vehicle_dynamics, other_vehicle_dynamics and pedestrian_dynamics) have no effect.
@@ -3874,6 +4155,7 @@ class RssSensor(Sensor):
         :param callback: () The function to be called whenever a RSS situation is about to be calculated.
         """
         ...
+
     def set_log_level(self, log_level: RssLogLevel):
         """
         Sets the log level.
@@ -3881,6 +4163,7 @@ class RssSensor(Sensor):
         :param log_level: (RssLogLevel) New log level.
         """
         ...
+
     def set_map_log_level(self, log_level: RssLogLevel):
         """
         Sets the map log level.
@@ -3888,6 +4171,7 @@ class RssSensor(Sensor):
         :param log_level: (RssLogLevel) New map log level.
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -3918,6 +4202,7 @@ class RssRestrictor:
         :return: carla.VehicleControl
         """
         ...
+
     def set_log_level(self, log_level: RssLogLevel):
         """
         Sets the log level.
@@ -4105,6 +4390,7 @@ class Image(SensorData):
         :param color_converter: (ColorConverter)
         """
         ...
+
     def save_to_disk(
         self, path: str, color_converter: ColorConverter = ColorConverter.Raw
     ):
@@ -4116,6 +4402,7 @@ class Image(SensorData):
         :param color_converter: (ColorConverter) Default Raw will make no changes.
         """
         ...
+
     def __getitem__(self, pos: int):
         """
 
@@ -4123,14 +4410,17 @@ class Image(SensorData):
         :param pos: (int)
         """
         ...
+
     def __iter__(self):
         """
         Iterate over the carla.Color that form the image.
         """
         ...
+
     def __len__(self):
         """ """
         ...
+
     def __setitem__(self, pos: int, color: Color):
         """
 
@@ -4140,6 +4430,7 @@ class Image(SensorData):
         :param color: (Color)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -4168,6 +4459,7 @@ class OpticalFlowImage(SensorData):
         :return: carla.Image
         """
         ...
+
     def __getitem__(self, pos: int):
         """
 
@@ -4175,14 +4467,17 @@ class OpticalFlowImage(SensorData):
         :param pos: (int)
         """
         ...
+
     def __iter__(self):
         """
         Iterate over the carla.OpticalFlowPixel that form the image.
         """
         ...
+
     def __len__(self):
         """ """
         ...
+
     def __setitem__(self, pos: int, color: Color):
         """
 
@@ -4192,6 +4487,7 @@ class OpticalFlowImage(SensorData):
         :param color: (Color)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -4217,6 +4513,7 @@ class LidarMeasurement(SensorData):
         :param path: (str)
         """
         ...
+
     def get_point_count(self, channel: int):
         """
         Retrieves the number of points sorted by channel that are generated by this measure. Sorting by channel allows to identify the original channel for every point.
@@ -4224,6 +4521,7 @@ class LidarMeasurement(SensorData):
         :param channel: (int)
         """
         ...
+
     def __getitem__(self, pos: int):
         """
 
@@ -4231,14 +4529,17 @@ class LidarMeasurement(SensorData):
         :param pos: (int)
         """
         ...
+
     def __iter__(self):
         """
         Iterate over the carla.LidarDetection retrieved as data.
         """
         ...
+
     def __len__(self):
         """ """
         ...
+
     def __setitem__(self, pos: int, detection: LidarDetection):
         """
 
@@ -4248,6 +4549,7 @@ class LidarMeasurement(SensorData):
         :param detection: (LidarDetection)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -4288,6 +4590,7 @@ class SemanticLidarMeasurement(SensorData):
         :param path: (str)
         """
         ...
+
     def get_point_count(self, channel: int):
         """
         Retrieves the number of points sorted by channel that are generated by this measure. Sorting by channel allows to identify the original channel for every point.
@@ -4295,6 +4598,7 @@ class SemanticLidarMeasurement(SensorData):
         :param channel: (int)
         """
         ...
+
     def __getitem__(self, pos: int):
         """
 
@@ -4302,14 +4606,17 @@ class SemanticLidarMeasurement(SensorData):
         :param pos: (int)
         """
         ...
+
     def __iter__(self):
         """
         Iterate over the carla.SemanticLidarDetection retrieved as data.
         """
         ...
+
     def __len__(self):
         """ """
         ...
+
     def __setitem__(self, pos: int, detection: SemanticLidarDetection):
         """
 
@@ -4319,6 +4626,7 @@ class SemanticLidarMeasurement(SensorData):
         :param detection: (SemanticLidarDetection)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -4440,6 +4748,7 @@ class RadarMeasurement(SensorData):
         Retrieves the number of entries generated, same as **\__str__()**.
         """
         ...
+
     def __getitem__(self, pos: int):
         """
 
@@ -4447,14 +4756,17 @@ class RadarMeasurement(SensorData):
         :param pos: (int)
         """
         ...
+
     def __iter__(self):
         """
         Iterate over the carla.RadarDetection retrieved as data.
         """
         ...
+
     def __len__(self):
         """ """
         ...
+
     def __setitem__(self, pos: int, detection: RadarDetection):
         """
 
@@ -4464,6 +4776,7 @@ class RadarMeasurement(SensorData):
         :param detection: (RadarDetection)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -4663,31 +4976,37 @@ class DVSEventArray:
         Converts the image following this pattern: blue indicates positive events, red indicates negative events.
         """
         ...
+
     def to_array(self):
         """
         Converts the stream of events to an array of int values in the following order [x, y, t, pol].
         """
         ...
+
     def to_array_x(self):
         """
         Returns an array with X pixel coordinate of all the events in the stream.
         """
         ...
+
     def to_array_y(self):
         """
         Returns an array with Y pixel coordinate of all the events in the stream.
         """
         ...
+
     def to_array_t(self):
         """
         Returns an array with the timestamp of all the events in the stream.
         """
         ...
+
     def to_array_pol(self):
         """
         Returns an array with the polarity of all the events in the stream.
         """
         ...
+
     def __getitem__(self, pos: int):
         """
 
@@ -4695,14 +5014,17 @@ class DVSEventArray:
         :param pos: (int)
         """
         ...
+
     def __iter__(self):
         """
         Iterate over the carla.DVSEvent retrieved as data.
         """
         ...
+
     def __len__(self):
         """ """
         ...
+
     def __setitem__(self, pos: int, color: Color):
         """
 
@@ -4712,6 +5034,7 @@ class DVSEventArray:
         :param color: (Color)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -4801,6 +5124,7 @@ class WorldSnapshot:
         :return: carla.ActorSnapshot
         """
         ...
+
     def has_actor(self, actor_id: int) -> bool:
         """
         Given a certain actor ID, checks if there is a snapshot corresponding it and so, if the actor was present at that moment.
@@ -4810,11 +5134,13 @@ class WorldSnapshot:
         :return: bool
         """
         ...
+
     def __iter__(self):
         """
         Iterate over the carla.ActorSnapshot stored in the snapshot.
         """
         ...
+
     def __len__(self) -> int:
         """
         Returns the amount of carla.ActorSnapshot present in this snapshot.
@@ -4822,6 +5148,7 @@ class WorldSnapshot:
         :return: int
         """
         ...
+
     def __eq__(self, other: object) -> bool:
         """
         Returns __True__ if both **timestamp** are the same.
@@ -4831,6 +5158,7 @@ class WorldSnapshot:
         :return: bool
         """
         ...
+
     def __ne__(self, other: object) -> bool:
         """
         Returns True if both **timestamp** are different.
@@ -4856,6 +5184,7 @@ class ActorSnapshot:
         :return: carla.Vector3D
         """
         ...
+
     def get_angular_velocity(self) -> Vector3D:
         """
         Returns the angular velocity vector registered for an actor in that tick.
@@ -4863,6 +5192,7 @@ class ActorSnapshot:
         :return: carla.Vector3D
         """
         ...
+
     def get_transform(self) -> Transform:
         """
         Returns the actor's transform (location and rotation) for an actor in that tick.
@@ -4870,6 +5200,7 @@ class ActorSnapshot:
         :return: carla.Transform
         """
         ...
+
     def get_velocity(self) -> Vector3D:
         """
         Returns the velocity vector registered for an actor in that tick.
@@ -4974,6 +5305,7 @@ class WeatherParameters:
         :param rayleigh_scattering_scale: (float) Controls interaction of light with small particles like air molecules. Dependent on light wavelength, resulting in a blue sky in the day or red sky in the evening.
         """
         ...
+
     def __eq__(self, other: object) -> bool:
         """
         Returns True if both objects' variables are the same.
@@ -4983,6 +5315,7 @@ class WeatherParameters:
         :return: bool
         """
         ...
+
     def __ne__(self, other: object) -> bool:
         """
         Returns True if both objects' variables are different.
@@ -4992,6 +5325,7 @@ class WeatherParameters:
         :return: bool
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -5032,6 +5366,7 @@ class Timestamp:
         :param platform_timestamp: (float)
         """
         ...
+
     def __eq__(self, other: object):
         """
 
@@ -5039,6 +5374,7 @@ class Timestamp:
         :param other: (Timestamp)
         """
         ...
+
     def __ne__(self, other: object):
         """
 
@@ -5046,6 +5382,7 @@ class Timestamp:
         :param other: (Timestamp)
         """
         ...
+
     def __str__(self):
         """ """
         ...
@@ -5064,6 +5401,7 @@ class ActorList:
         :return: list
         """
         ...
+
     def find(self, actor_id: int) -> Actor:
         """
         Finds an actor using its identifier and returns it or None if it is not present.
@@ -5073,6 +5411,7 @@ class ActorList:
         :return: carla.Actor
         """
         ...
+
     def __getitem__(self, pos: int) -> Actor:
         """
         Returns the actor corresponding to `pos` position in the list.
@@ -5082,11 +5421,13 @@ class ActorList:
         :return: carla.Actor
         """
         ...
+
     def __iter__(self):
         """
         Iterate over the carla.Actor contained in the list.
         """
         ...
+
     def __len__(self) -> int:
         """
         Returns the amount of actors listed.
@@ -5094,6 +5435,7 @@ class ActorList:
         :return: int
         """
         ...
+
     def __str__(self) -> str:
         """
         Parses to the ID for every actor listed.
@@ -5153,6 +5495,7 @@ class WorldSettings:
         :param fixed_delta_seconds: (float) Set a fixed time-step in between frames. 0.0 means variable time-step and it is the default mode.
         """
         ...
+
     def __eq__(self, other: object) -> bool:
         """
         Returns True if both objects' variables are the same.
@@ -5162,6 +5505,7 @@ class WorldSettings:
         :return: bool
         """
         ...
+
     def __ne__(self, other: object) -> bool:
         """
         Returns True if both objects' variables are different.
@@ -5171,6 +5515,7 @@ class WorldSettings:
         :return: bool
         """
         ...
+
     def __str__(self) -> str:
         """
         Parses the established settings to a string and shows them in command line.
@@ -5269,6 +5614,7 @@ class TextureColor:
         :param height: (int)
         """
         ...
+
     def set_dimensions(self, width: int, height: int):
         """
         Resizes the texture to te specified dimensions.
@@ -5278,6 +5624,7 @@ class TextureColor:
         :param height: (int)
         """
         ...
+
     def get(self, x: int, y: int) -> Color:
         """
         Get the (x,y) pixel data.
@@ -5289,6 +5636,7 @@ class TextureColor:
         :return: carla.Color
         """
         ...
+
     def set(self, x: int, y: int, value: Color):
         """
         Sets the (x,y) pixel data with `value`.
@@ -5321,6 +5669,7 @@ class TextureFloatColor:
         :param height: (int)
         """
         ...
+
     def set_dimensions(self, width: int, height: int):
         """
         Resizes the texture to te specified dimensions.
@@ -5330,6 +5679,7 @@ class TextureFloatColor:
         :param height: (int)
         """
         ...
+
     def get(self, x: int, y: int) -> FloatColor:
         """
         Get the (x,y) pixel data.
@@ -5341,6 +5691,7 @@ class TextureFloatColor:
         :return: carla.FloatColor
         """
         ...
+
     def set(self, x: int, y: int, value: FloatColor):
         """
         Sets the (x,y) pixel data with `value`.
@@ -5413,6 +5764,7 @@ class World:
         :return: int
         """
         ...
+
     def on_tick(self, callback: WorldSnapshot) -> int:
         """
         This method is used in [__asynchronous__ mode](https://carla.readthedocs.io/en/latest/adv_synchrony_timestep/). It starts callbacks from the client for the function defined as `callback`, and returns the ID of the callback. The function will be called everytime the server ticks. It requires a carla.WorldSnapshot as argument, which can be retrieved from wait_for_tick(). Use remove_on_tick() to stop the callbacks.
@@ -5422,6 +5774,7 @@ class World:
         :return: int
         """
         ...
+
     def remove_on_tick(self, callback_id: int):
         """
         Stops the callback for `callback_id` started with on_tick().
@@ -5429,6 +5782,7 @@ class World:
         :param callback_id: (callback) The callback to be removed. The ID is returned when creating the callback.
         """
         ...
+
     def tick(self, seconds: float = 10.0) -> int:
         """
         This method is used in [__synchronous__ mode](https://carla.readthedocs.io/en/latest/adv_synchrony_timestep/), when the server waits for a client tick before computing the next frame. This method will send the tick, and give way to the server. It returns the ID of the new frame computed by the server.
@@ -5440,6 +5794,7 @@ class World:
         :return: int
         """
         ...
+
     def wait_for_tick(self, seconds: float = 10.0) -> WorldSnapshot:
         """
         This method is used in [__asynchronous__ mode](https://carla.readthedocs.io/en/latest/adv_synchrony_timestep/). It makes the client wait for a server tick. When the next frame is computed, the server will tick and return a snapshot describing the new state of the world.
@@ -5449,6 +5804,7 @@ class World:
         :return: carla.WorldSnapshot
         """
         ...
+
     def spawn_actor(
         self,
         blueprint: ActorBlueprint,
@@ -5470,6 +5826,7 @@ class World:
         :return: carla.Actor
         """
         ...
+
     def try_spawn_actor(
         self,
         blueprint: ActorBlueprint,
@@ -5491,6 +5848,7 @@ class World:
         :return: carla.Actor
         """
         ...
+
     def get_actor(self, actor_id: int) -> Actor:
         """
         Looks up for an actor by ID and returns None if not found.
@@ -5500,6 +5858,7 @@ class World:
         :return: carla.Actor
         """
         ...
+
     def get_actors(self, actor_ids: Optional[list] = None) -> ActorList:
         """
         Retrieves a list of carla.Actor elements, either using a list of IDs provided or just listing everyone on stage. If an ID does not correspond with any actor, it will be excluded from the list returned, meaning that both the list of IDs and the list of actors may have different lengths.
@@ -5509,6 +5868,7 @@ class World:
         :return: carla.ActorList
         """
         ...
+
     def get_blueprint_library(self) -> BlueprintLibrary:
         """
         Returns a list of actor blueprints available to ease the spawn of these into the world.
@@ -5516,6 +5876,7 @@ class World:
         :return: carla.BlueprintLibrary
         """
         ...
+
     def get_vehicles_light_states(self) -> dict:
         """
         Returns a dict where the keys are carla.Actor IDs and the values are carla.VehicleLightState of that vehicle.
@@ -5523,6 +5884,7 @@ class World:
         :return: dict
         """
         ...
+
     def get_level_bbs(self, actor_type: CityObjectLabel) -> List[BoundingBox]:
         """
         Returns an array of bounding boxes with location and rotation in world space. The method returns all the bounding boxes in the level by default, but the query can be filtered by semantic tags with the argument `actor_type`.
@@ -5532,6 +5894,7 @@ class World:
         :return: array(carla.BoundingBox)
         """
         ...
+
     def get_environment_objects(
         self, object_type: CityObjectLabel
     ) -> List[EnvironmentObject]:
@@ -5543,6 +5906,7 @@ class World:
         :return: array(carla.EnvironmentObject)
         """
         ...
+
     def enable_environment_objects(self, env_objects_ids: set[int], enable: bool):
         """
         Enable or disable a set of EnvironmentObject identified by their id. These objects will appear or disappear from the level.
@@ -5552,6 +5916,7 @@ class World:
         :param enable: (bool) State to be applied to all the EnvironmentObject of the set.
         """
         ...
+
     def get_lightmanager(self) -> LightManager:
         """
         Returns an instance of carla.LightManager that can be used to handle the lights in the scene.
@@ -5559,6 +5924,7 @@ class World:
         :return: carla.LightManager
         """
         ...
+
     def freeze_all_traffic_lights(self, frozen: bool):
         """
         Freezes or unfreezes all traffic lights in the scene. Frozen traffic lights can be modified by the user but the time will not update them until unfrozen.
@@ -5566,11 +5932,13 @@ class World:
         :param frozen: (bool)
         """
         ...
+
     def reset_all_traffic_lights(self):
         """
         Resets the cycle of all traffic lights in the map to the initial state.
         """
         ...
+
     def get_map(self) -> Map:
         """
         Asks the server for the XODR containing the map file, and returns this parsed as a carla.Map.
@@ -5580,6 +5948,7 @@ class World:
         :return: carla.Map
         """
         ...
+
     def get_traffic_light(self, landmark: Landmark) -> TrafficLight:
         """
         Provided a landmark, returns the traffic light object it describes.
@@ -5589,6 +5958,7 @@ class World:
         :return: carla.TrafficLight
         """
         ...
+
     def get_traffic_light_from_opendrive_id(
         self, traffic_light_id: str
     ) -> TrafficLight:
@@ -5600,6 +5970,7 @@ class World:
         :return: carla.TrafficLight
         """
         ...
+
     def get_traffic_lights_from_waypoint(
         self, waypoint: Waypoint, distance: float
     ) -> list[TrafficLight]:
@@ -5613,6 +5984,7 @@ class World:
         :return: list(carla.TrafficLight)
         """
         ...
+
     def get_traffic_lights_in_junction(self, junction_id: int) -> list[TrafficLight]:
         """
         Returns the list of traffic light actors affecting the junction indicated in `junction_id`.
@@ -5622,6 +5994,7 @@ class World:
         :return: list(carla.TrafficLight)
         """
         ...
+
     def get_traffic_sign(self, landmark: Landmark) -> TrafficSign:
         """
         Provided a landmark, returns the traffic sign object it describes.
@@ -5631,6 +6004,7 @@ class World:
         :return: carla.TrafficSign
         """
         ...
+
     def get_random_location_from_navigation(self) -> Location:
         """
         This can only be used with walkers. It retrieves a random location to be used as a destination using the go_to_location() method in carla.WalkerAIController. This location will be part of a sidewalk. Roads, crosswalks and grass zones are excluded. The method does not take into consideration locations of existing actors so if a collision happens when trying to spawn an actor, it will return an error. Take a look at [`generate_traffic.py`](https://github.com/carla-simulator/carla/blob/master/PythonAPI/examples/generate_traffic.py) for an example.
@@ -5638,6 +6012,7 @@ class World:
         :return: carla.Location
         """
         ...
+
     def get_settings(self) -> WorldSettings:
         """
         Returns an object containing some data about the simulation such as synchrony between client and server or rendering mode.
@@ -5645,6 +6020,7 @@ class World:
         :return: carla.WorldSettings
         """
         ...
+
     def get_snapshot(self) -> WorldSnapshot:
         """
         Returns a snapshot of the world at a certain moment comprising all the information about the actors.
@@ -5652,6 +6028,7 @@ class World:
         :return: carla.WorldSnapshot
         """
         ...
+
     def get_spectator(self) -> Actor:
         """
         Returns the spectator actor. The spectator is a special type of actor created by Unreal Engine, usually with ID=0, that acts as a camera and controls the view in the simulator window.
@@ -5659,6 +6036,7 @@ class World:
         :return: carla.Actor
         """
         ...
+
     def get_weather(self) -> WeatherParameters:
         """
         Retrieves an object containing weather parameters currently active in the simulation, mainly cloudiness, precipitation, wind and sun position.
@@ -5666,6 +6044,7 @@ class World:
         :return: carla.WeatherParameters
         """
         ...
+
     def set_weather(self, weather: WeatherParameters):
         """
         Changes the weather parameteres ruling the simulation to another ones defined in an object.
@@ -5673,6 +6052,7 @@ class World:
         :param weather: (WeatherParameters) New conditions to be applied.
         """
         ...
+
     def cast_ray(
         self, initial_location: Location, final_location: Location
     ) -> list[LabelledPoint]:
@@ -5686,6 +6066,7 @@ class World:
         :return: list(carla.LabelledPoint)
         """
         ...
+
     def project_point(
         self, location: Location, direction: Vector3D, search_distance: float
     ) -> LabelledPoint:
@@ -5701,6 +6082,7 @@ class World:
         :return: carla.LabelledPoint
         """
         ...
+
     def ground_projection(
         self, location: Location, search_distance: float
     ) -> LabelledPoint:
@@ -5714,6 +6096,7 @@ class World:
         :return: carla.LabelledPoint
         """
         ...
+
     def load_map_layer(self, map_layers: MapLayer):
         """
         Loads the selected layers to the level. If the layer is already loaded the call has no effect.
@@ -5723,6 +6106,7 @@ class World:
         :param map_layers: (MapLayer) Mask of level layers to be loaded.
         """
         ...
+
     def unload_map_layer(self, map_layers: MapLayer):
         """
         Unloads the selected layers to the level. If the layer is already unloaded the call has no effect.
@@ -5732,6 +6116,7 @@ class World:
         :param map_layers: (MapLayer) Mask of level layers to be unloaded.
         """
         ...
+
     def set_pedestrians_cross_factor(self, percentage: float):
         """
 
@@ -5741,6 +6126,7 @@ class World:
         :param percentage: (float) Sets the percentage of pedestrians that can walk on the road or cross at any point on the road. Value should be between `0.0` and `1.0`. For example, a value of `0.1` would allow 10% of pedestrians to walk on the road. __Default is `0.0`__.
         """
         ...
+
     def set_pedestrians_seed(self, seed: int):
         """
 
@@ -5750,6 +6136,7 @@ class World:
         :param seed: (int) Sets the seed to use for any random number generated in relation to pedestrians.
         """
         ...
+
     def apply_color_texture_to_object(
         self,
         object_name: str,
@@ -5766,6 +6153,7 @@ class World:
         :param texture: (TextureColor)
         """
         ...
+
     def apply_float_color_texture_to_object(
         self,
         object_name: str,
@@ -5782,6 +6170,7 @@ class World:
         :param texture: (TextureFloatColor)
         """
         ...
+
     def apply_textures_to_object(
         self,
         object_name: str,
@@ -5804,6 +6193,7 @@ class World:
         :param ao_roughness_metallic_emissive_texture: (TextureFloatColor)
         """
         ...
+
     def apply_color_texture_to_objects(
         self,
         objects_name_list: list[str],
@@ -5820,6 +6210,7 @@ class World:
         :param texture: (TextureColor)
         """
         ...
+
     def apply_float_color_texture_to_objects(
         self,
         objects_name_list: list[str],
@@ -5836,6 +6227,7 @@ class World:
         :param texture: (TextureFloatColor)
         """
         ...
+
     def apply_textures_to_objects(
         self,
         objects_name_list: list[str],
@@ -5858,6 +6250,7 @@ class World:
         :param ao_roughness_metallic_emissive_texture: (TextureFloatColor)
         """
         ...
+
     def get_names_of_all_objects(self) -> list[str]:
         """
         Returns a list of the names of all objects in the scene that can be painted with the apply texture functions.
@@ -5865,6 +6258,7 @@ class World:
         :return: list(str)
         """
         ...
+
     def __str__(self) -> str:
         """
         The content of the world is parsed and printed as a brief report of its current state.
@@ -5903,6 +6297,7 @@ class DebugHelper:
         :param life_time: (float) Shape's lifespan. By default it only lasts one frame. Set this to 0 for permanent shapes.
         """
         ...
+
     def draw_box(
         self,
         box: BoundingBox,
@@ -5925,6 +6320,7 @@ class DebugHelper:
         :param life_time: (float) Shape's lifespan. By default it only lasts one frame. Set this to 0 for permanent shapes.
         """
         ...
+
     def draw_line(
         self,
         begin: Location,
@@ -5947,6 +6343,7 @@ class DebugHelper:
         :param life_time: (float) Shape's lifespan. By default it only lasts one frame. Set this to 0 for permanent shapes.
         """
         ...
+
     def draw_point(
         self,
         location: Location,
@@ -5966,6 +6363,7 @@ class DebugHelper:
         :param life_time: (float) Shape's lifespan. By default it only lasts one frame. Set this to 0 for permanent shapes.
         """
         ...
+
     def draw_string(
         self,
         location: Location,
@@ -5988,4 +6386,3 @@ class DebugHelper:
         :param life_time: (float) Shape's lifespan. By default it only lasts one frame. Set this to 0 for permanent shapes.
         """
         ...
-

@@ -426,8 +426,8 @@ def segment(
 
 
 def create_segment(
-    frame_duration: int,
-    segment_base_folder: FlexiblePath,
+    frame_duration: Optional[int],
+    segment_base_folder: Optional[FlexiblePath],
     segment_config: FullSegmentConfig[TSettings, TContext, TSensorDataMap],
 ) -> FullSegment:
 
