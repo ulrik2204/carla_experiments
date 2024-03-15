@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from queue import Queue
-from typing import Any, Dict, List, Optional, Tuple, TypedDict
+from typing import List, Optional, Tuple, TypedDict
 
 import carla
 import click
@@ -29,12 +29,11 @@ from carla_experiments.carla_utils.types_carla_utils import (
     FullSegment,
     FullSegmentConfigResult,
 )
-from carla_experiments.datagen.utils import (
+from carla_experiments.common.position_and_rotation import (
     carla_location_to_ecef,
-    euler_to_quaternion2,
-    mp4_to_hevc,
-    pil_images_to_mp4,
+    carla_rotation_to_ecef_frd_quaternion,
 )
+from carla_experiments.datagen.utils import mp4_to_hevc, pil_images_to_mp4
 
 
 class ProgressHandler:
@@ -107,11 +106,13 @@ def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
     # front_image.timestamp  # TODO: use this for frame times?
     ego_vehicle = context.ego_vehicle
     vehicle_transform = ego_vehicle.get_transform()
+    camera_transform = context.sensor_map["front_camera"].get_transform()
     location = vehicle_transform.location
-    rotation = vehicle_transform.rotation
+    # rotation = vehicle_transform.rotation
+    rotation = camera_transform.rotation
     location_np = carla_location_to_ecef(context.map, location)
     # location_np = np.array([location.x, location.y, location.z])
-    rotation_np = euler_to_quaternion2(context.map, rotation)
+    rotation_np = carla_rotation_to_ecef_frd_quaternion(context.map, rotation)
     # rotation_np = np.array([rotation.pitch, rotation.yaw, rotation.roll])
     # frame = _generate_frame_id()
     # print(f"before add [frame {frame}]", len(context.data_dict["images"]))
@@ -432,9 +433,10 @@ def main(root_folder: Optional[str], progress_file: Optional[str]):
         base_path = Path("./output") / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     else:
         base_path = Path(root_folder)
+    number_of_segments = 1
     segment_save_path_list = [
         (base_path / f"Chunk_{i//100 + 1}/Batch_{i//10 + 1}/Segment_{i}").as_posix()
-        for i in range(1, 2001)
+        for i in range(1, number_of_segments + 1)
     ]
     print(
         "segment_save_path_list",
@@ -443,7 +445,11 @@ def main(root_folder: Optional[str], progress_file: Optional[str]):
         len(segment_save_path_list),
     )
     progress_handler = ProgressHandler(used_progress_file, segment_save_path_list)
-    all_segments = create_all_segments(segment_save_path_list)
+    all_segments = [
+        generate_simple_segment("Town04", Path(item), i)
+        for i, item in enumerate(segment_save_path_list, 1)
+    ]
+    # all_segments = create_all_segments(segment_save_path_list)
     chosen_segments = choose_segments(all_segments, progress_handler.get_progress())
     print(
         "Starting from segment",

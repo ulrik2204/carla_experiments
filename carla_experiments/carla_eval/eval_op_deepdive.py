@@ -5,12 +5,9 @@ from queue import Queue
 from typing import List, Optional, Tuple, TypedDict
 
 import carla
-import cv2
+import matplotlib.pyplot as plt
 import numpy as np
-import pymap3d as pm
 import torch
-import torchvision.transforms as transforms
-from matplotlib import axis
 from PIL import Image
 
 from carla_experiments.carla_eval.pid_controller import VehiclePIDController
@@ -27,9 +24,21 @@ from carla_experiments.carla_utils.spawn import (
     spawn_walker_bots,
 )
 from carla_experiments.carla_utils.types_carla_utils import FullSegmentConfigResult
+from carla_experiments.common.position_and_rotation import (
+    carla_location_to_ecef,
+    carla_rotation_to_ecef_frd_quaternion,
+    ecef_to_carla_location,
+    waypoints_to_ecef,
+)
+from carla_experiments.common.utils_op_deepdive import (
+    frd_waypoints_to_fru,
+    plot_trajectory,
+    setup_calling_op_deepdive,
+    transform_images,
+)
 from carla_experiments.models.op_deepdive import SequenceBaselineV1
 
-CKPT_PATH = "./.weights/opd_carla_epoch_98.pth"
+CKPT_PATH = "./.weights/carla_epoch_99.pth"
 DT_CTRL = 0.01  # controlsd
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 start_time = time.time()
@@ -44,19 +53,20 @@ def load_line_following_model():
     return model
 
 
-planning_v0 = load_line_following_model()
+_planning_v0 = load_line_following_model()
 # wheeled_speed_pid = PIDController(110, k_i=11.5, rate=int(1 / DT_CTRL))
+call_op_deepdive = setup_calling_op_deepdive(_planning_v0, 1, "cuda")
 
 
-def _old_predict_vehicle_controls(image):
-    with torch.no_grad():
-        # this now returns waypoints
-        output = planning_v0(image)
-        output = output.squeeze(0)
-        steer = float(output[0].item())
-        throttle = float(output[1].item())
-        brake = float(output[2].item())
-        return steer, throttle, 0.0 if brake < 0.5 else brake
+# def _old_predict_vehicle_controls(image):
+#     with torch.no_grad():
+#         # this now returns waypoints
+#         output = planning_v0(image)
+#         output = output.squeeze(0)
+#         steer = float(output[0].item())
+#         throttle = float(output[1].item())
+#         brake = float(output[2].item())
+#         return steer, throttle, 0.0 if brake < 0.5 else brake
 
 
 class AppActorMap(TypedDict):
@@ -90,151 +100,6 @@ class AppContext(BatchContext[AppSensorMap, AppActorMap], AppSettings):
     pid_controller: VehiclePIDController
 
 
-# MED model
-MEDMODEL_INPUT_SIZE = (512, 256)
-MEDMODEL_YUV_SIZE = (MEDMODEL_INPUT_SIZE[0], MEDMODEL_INPUT_SIZE[1] * 3 // 2)
-MEDMODEL_CY = 47.6
-
-medmodel_fl = 910.0
-medmodel_intrinsics = np.array(
-    [
-        [medmodel_fl, 0.0, 0.5 * MEDMODEL_INPUT_SIZE[0]],
-        [0.0, medmodel_fl, MEDMODEL_CY],
-        [0.0, 0.0, 1.0],
-    ]
-)
-DEVICE_FRAME_FROM_VIEW_FRAME = np.array(
-    [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
-)
-VIEW_FRAME_FROM_DEVICE_FRAME = DEVICE_FRAME_FROM_VIEW_FRAME.T
-NUM_PTS = 10 * 20  # 10 s * 20 Hz = 200 frames
-T_ANCHORS = np.array(
-    (
-        0.0,
-        0.00976562,
-        0.0390625,
-        0.08789062,
-        0.15625,
-        0.24414062,
-        0.3515625,
-        0.47851562,
-        0.625,
-        0.79101562,
-        0.9765625,
-        1.18164062,
-        1.40625,
-        1.65039062,
-        1.9140625,
-        2.19726562,
-        2.5,
-        2.82226562,
-        3.1640625,
-        3.52539062,
-        3.90625,
-        4.30664062,
-        4.7265625,
-        5.16601562,
-        5.625,
-        6.10351562,
-        6.6015625,
-        7.11914062,
-        7.65625,
-        8.21289062,
-        8.7890625,
-        9.38476562,
-        10.0,
-    )
-)
-T_IDX = np.linspace(0, 10, num=NUM_PTS)
-
-
-def quat2rot(quats):
-    quats = np.array(quats)
-    input_shape = quats.shape
-    quats = np.atleast_2d(quats)
-    Rs = np.zeros((quats.shape[0], 3, 3))
-    q0 = quats[:, 0]
-    q1 = quats[:, 1]
-    q2 = quats[:, 2]
-    q3 = quats[:, 3]
-    Rs[:, 0, 0] = q0 * q0 + q1 * q1 - q2 * q2 - q3 * q3
-    Rs[:, 0, 1] = 2 * (q1 * q2 - q0 * q3)
-    Rs[:, 0, 2] = 2 * (q0 * q2 + q1 * q3)
-    Rs[:, 1, 0] = 2 * (q1 * q2 + q0 * q3)
-    Rs[:, 1, 1] = q0 * q0 - q1 * q1 + q2 * q2 - q3 * q3
-    Rs[:, 1, 2] = 2 * (q2 * q3 - q0 * q1)
-    Rs[:, 2, 0] = 2 * (q1 * q3 - q0 * q2)
-    Rs[:, 2, 1] = 2 * (q0 * q1 + q2 * q3)
-    Rs[:, 2, 2] = q0 * q0 - q1 * q1 - q2 * q2 + q3 * q3
-
-    if len(input_shape) < 2:
-        return Rs[0]
-    else:
-        return Rs
-
-
-def calibration(extrinsic_matrix, cam_intrinsics, device_frame_from_road_frame=None):
-    if device_frame_from_road_frame is None:
-        device_frame_from_road_frame = np.hstack(
-            (np.diag([1, -1, -1]), [[0], [0], [1.51]])
-        )
-    med_frame_from_ground = (
-        medmodel_intrinsics
-        @ VIEW_FRAME_FROM_DEVICE_FRAME
-        @ device_frame_from_road_frame[:, (0, 1, 3)]
-    )
-    ground_from_med_frame = np.linalg.inv(med_frame_from_ground)
-
-    extrinsic_matrix_eigen = extrinsic_matrix[:3]
-    camera_frame_from_road_frame = np.dot(cam_intrinsics, extrinsic_matrix_eigen)
-    camera_frame_from_ground = np.zeros((3, 3))
-    camera_frame_from_ground[:, 0] = camera_frame_from_road_frame[:, 0]
-    camera_frame_from_ground[:, 1] = camera_frame_from_road_frame[:, 1]
-    camera_frame_from_ground[:, 2] = camera_frame_from_road_frame[:, 3]
-    warp_matrix = np.dot(camera_frame_from_ground, ground_from_med_frame)
-
-    return warp_matrix
-
-
-def transform_images(current_image: Image.Image, last_image: Image.Image):
-    # seq_input_img
-    trans = transforms.Compose(
-        [
-            # transforms.Resize((900 // 2, 1600 // 2)),
-            # transforms.Resize((9 * 32, 16 * 32)),
-            transforms.Resize((128, 256)),
-            transforms.ToTensor(),
-            transforms.Normalize([0.3890, 0.3937, 0.3851], [0.2172, 0.2141, 0.2209]),
-        ]
-    )
-    warp_matrix = calibration(
-        extrinsic_matrix=np.array(
-            [[0, -1, 0, 0], [0, 0, -1, 1.22], [1, 0, 0, 0], [0, 0, 0, 1]]
-        ),
-        cam_intrinsics=np.array([[910, 0, 582], [0, 910, 437], [0, 0, 1]]),
-        device_frame_from_road_frame=np.hstack(
-            (np.diag([1, -1, -1]), [[0], [0], [1.22]])
-        ),
-    )
-    imgs = [current_image, last_image]  # contains one more img
-    imgs = [
-        cv2.warpPerspective(
-            src=cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR),
-            M=warp_matrix,
-            dsize=(512, 256),
-            flags=cv2.WARP_INVERSE_MAP,
-        )
-        for img in imgs
-    ]
-    imgs = [cv2.cvtColor(img, cv2.COLOR_BGR2RGB) for img in imgs]
-    imgs = list(Image.fromarray(img) for img in imgs)
-    imgs = list(trans(img)[None] for img in imgs)
-    input_img = torch.cat(imgs, dim=0)  # [N+1, 3, H, W]
-    del imgs
-    input_img = torch.cat((input_img[:-1, ...], input_img[1:, ...]), dim=1)
-    return input_img.to(DEVICE)  # Should be [1, 6, 128, 256]
-
-
 # def transform_pose(current_location, last_location, current_rotation, last_rotation):
 #     frame_locations = np.array([current_location, last_location])
 #     frame_orientations = np.array([current_rotation, last_rotation])
@@ -264,30 +129,7 @@ def get_predicted_trajectory(
     last_image,
 ) -> torch.Tensor:
     input_image = transform_images(current_image, last_image)
-    bs = 1
-    hidden = torch.zeros((2, bs, 512)).to(DEVICE)
-    with torch.no_grad():
-
-        pred_cls, pred_trajectory, hidden = planning_v0(input_image, hidden)
-    pred_conf = torch.softmax(pred_cls, dim=-1)[0]
-    # pred_trajectory.Shape = (5, 33, 3)
-    pred_trajectory = pred_trajectory.reshape(planning_v0.M, planning_v0.num_pts, 3)
-    # print("pred_trajectory", pred_trajectory.shape)  # (5, 33, 3)
-    # The code in training to predict from one batch (data):
-    # seq_inputs, seq_labels = (
-    #     data["seq_input_img"].cuda(),
-    #     data["seq_future_poses"].cuda(),
-    # )
-    # bs = seq_labels.size(0)
-    # seq_length = seq_labels.size(1)
-
-    # hidden = torch.zeros((2, bs, 512)).cuda()
-    # total_loss = 0
-    # for t in tqdm(range(seq_length), leave=False, disable=disable_tqdm, position=2):
-    #     num_steps += 1
-    #     inputs, labels = seq_inputs[:, t, :, :, :], seq_labels[:, t, :, :]
-    #     pred_cls, pred_trajectory, hidden = model(inputs, hidden)
-    # TODO: Convert its reference waypoints to CARLA waypoints
+    pred_trajectory, pred_conf, *_ = call_op_deepdive(input_image)
     most_confident_trajectory = pred_trajectory[pred_conf.argmax(), :]
     # should be (33, 3)
 
@@ -309,61 +151,42 @@ def calculate_speeds_tensor(waypoints: torch.Tensor) -> np.ndarray:
     return speeds.cpu().numpy()
 
 
-def calculate_speeds_from_carla_waypoints(
-    waypoints: List[carla.Waypoint],
-) -> List[float]:
-    # Initialize an empty list to hold the distances
-    distances = []
+def transform_from_ego_frame_to_map_coordinates(
+    ego_trans: carla.Transform, waypoint: np.ndarray
+) -> carla.Location:
+    # IS THIS CORRECT? SHOULDN'T IT JUST ADD THE WAYPOINT TO THE EGO LOCATION?
+    fu_c = ego_trans.get_forward_vector().make_unit_vector()
+    forward_unit_vec = np.array((fu_c.x, fu_c.y, fu_c.z))
+    ru_c = ego_trans.get_right_vector().make_unit_vector()
+    right_unit_vec = np.array((ru_c.x, ru_c.y, ru_c.z))
+    up = ego_trans.get_up_vector().make_unit_vector()
+    up_unit_vec = np.array((up.x, up.y, up.z))
 
-    # Calculate distances between successive waypoints
-    for i in range(1, len(waypoints)):
-        location1 = waypoints[i - 1].transform.location
-        location2 = waypoints[i].transform.location
-
-        # Calculate the Euclidean distance between waypoints
-        distance = (
-            (location2.x - location1.x) ** 2 + (location2.y - location1.y) ** 2
-        ) ** 0.5
-        distances.append(distance)
-
-    # Convert distances to a PyTorch tensor
-    distances_tensor = np.array(distances)
-
-    # Since waypoints are sampled at 20Hz, the time delta between each is 1/20 seconds or 0.05 seconds
-    delta_time = 0.05
-
-    # Calculate speeds by dividing distances by the time delta
-    speeds = distances_tensor / delta_time
-
-    return speeds.tolist()
-
-
-def convert_ecef_waypoint_to_carla_waypoint(carla_map: carla.Map, waypoint: np.ndarray):
-    ecef_x = waypoint[0]
-    ecef_y = waypoint[1]
-    ecef_z = waypoint[2]
-
-    # ECEF to ENU
-    origin_geolocation = carla_map.transform_to_geolocation(carla.Location(0, 0, 0))
-    latitude = np.radians(origin_geolocation.latitude)
-    longitude = np.radians(origin_geolocation.longitude)
-    altitude = origin_geolocation.altitude  # In meters
-
-    x, y, z = pm.ecef2enu(
-        ecef_x,
-        ecef_y,
-        ecef_z,
-        latitude,
-        longitude,
-        altitude,
-        deg=False,
+    ego_l = np.array((ego_trans.location.x, ego_trans.location.y, ego_trans.location.z))
+    # This neglects the z coordinate
+    target_l = (
+        ego_l
+        + waypoint[0] * forward_unit_vec
+        + waypoint[1] * right_unit_vec
+        + waypoint[2] * up_unit_vec
     )
+    # print("trans loc and rot", ego_l)
+    # print("trans_matrix", ego_trans.get_matrix())
+    return carla.Location(x=target_l[0], y=target_l[1], z=target_l[2])
 
-    # ENU to ESU into Carla waypoint
-    location = carla.Location(x, -y, z)
 
-    # TODO: Add orientation as well
-    return location
+def draw_trajectory(world: carla.World, points: List[carla.Location]):
+    for i in range(len(points) - 1):
+        world.debug.draw_line(
+            points[i],
+            points[i + 1],
+            thickness=0.1,
+            color=carla.Color(255, 0, 0),
+            life_time=0.1,
+        )
+
+
+did_once = False
 
 
 def predict_vehicle_controls_task(
@@ -377,42 +200,75 @@ def predict_vehicle_controls_task(
     # speed = calculate_vehicle_speed(context.ego_vehicle)
     # front_image.timestamp  # TODO: use this for frame times?
     ego_vehicle = context.ego_vehicle
+    current_transform = ego_vehicle.get_transform()
     last_image = context.data_dict["last_image"]
     if last_image is None:
         context.data_dict["last_image"] = current_image
         return
-    trajectory = get_predicted_trajectory(current_image, last_image)
-    next_waypoint = torch.mean(trajectory[1:5], axis=0).cpu().numpy()  # type: ignore
-    print("trajectory", trajectory.shape, next_waypoint, trajectory[6])
-    converted_waypoint = convert_ecef_waypoint_to_carla_waypoint(
-        context.map, next_waypoint
+    wp_index = 1
+    trajectory = get_predicted_trajectory(current_image, last_image).cpu()
+    # METHOD 1: Converting ECEF waypoints back to ECEF coords and then to CARLA coords
+    # vehicle_location_ecef = carla_location_to_ecef(
+    #     context.map, current_transform.location
+    # )
+    # vehicle_rotation_ecef = carla_rotation_to_ecef_frd_quaternion(
+    #     context.map, current_transform.rotation
+    # )
+    # ecef_location, ecef_rotation = waypoints_to_ecef(
+    #     trajectory.numpy(), vehicle_location_ecef, vehicle_rotation_ecef
+    # )
+    # ecef_rotation_target = ecef_rotation[wp_index]
+    # target_rotation = ecef_frd_quaternion_to_carla_rotation(
+    #     context.map, ecef_rotation_target
+    # )
+    # trajecotry_locations = [
+    #     ecef_to_carla_location(context.map, loc) for loc in ecef_location
+    # ]
+    # target_location = trajecotry_locations[wp_index]
+    # METHOD 2: The waypoints are in FRD, convert to left-handed FRU and then convert to CARLA
+    fru_waypoints = frd_waypoints_to_fru(trajectory.numpy())
+    # fru_waypoints[:, 1] = -fru_waypoints[:, 1]  # pretty sure this is wrong
+    print("fru_waypoint", fru_waypoints[wp_index])
+    trajectory_locations = [
+        transform_from_ego_frame_to_map_coordinates(current_transform, wp)
+        for wp in fru_waypoints
+    ]
+    average_wp = np.mean(fru_waypoints[wp_index : wp_index + 5], axis=0)
+    print("average_wp", average_wp)
+
+    target_location = transform_from_ego_frame_to_map_coordinates(
+        current_transform, average_wp
     )
-    print("converted_waypoint", converted_waypoint)
+
+    global did_once
+    if not did_once:
+        plot_trajectory(trajectory.numpy(), save_path="trajectory_3d.png")
+        did_once = True
+    draw_trajectory(context.client.get_world(), trajectory_locations)
+    # print("converted_waypoint", converted_waypoint)
     speeds = calculate_speeds_tensor(trajectory)
-    next_speed = np.mean(speeds[1:5], axis=0)
-    print("next_speed", next_speed)
-    control = context.pid_controller.run_step(next_speed, converted_waypoint)
+    next_speed = speeds[wp_index]
+    # print("next_speed", next_speedo)
+    loc = current_transform.location
+    print("-----")
+    print("current location", loc.x, loc.y, loc.z)
+    print("target location", target_location.x, target_location.y, target_location.z)
+    control = context.pid_controller.run_step(next_speed, target_location)
     # control.brake = 0
-    print("control", control)
+    # print("control", control)
     ego_vehicle.apply_control(control)
     context.data_dict["last_image"] = current_image
-    # print(f"after add [frame {frame}]", len(context.data_dict["images"]))
-    # return {
-    #     "location": {
-    #         str(frame): location_np,
-    #     },
-    #     "rotation": {
-    #         str(frame): rotation_np,
-    #     },
-    #     "images": {
-    #         str(frame): front_image,
-    #     },
-    # }
+
+
+done = False
 
 
 def spectator_follow_ego_vehicle_task(
     context: AppContext, sensor_data_map: AppSensorDataMap
 ) -> None:
+    global done
+    # if done:
+    #     return
     ego_vehicle = context.ego_vehicle
     vehicle_transform = ego_vehicle.get_transform()
     spectator = context.client.get_world().get_spectator()
@@ -420,6 +276,7 @@ def spectator_follow_ego_vehicle_task(
     spectator_transform.location = vehicle_transform.location + carla.Location(z=2)
     spectator_transform.rotation = vehicle_transform.rotation
     spectator.set_transform(spectator_transform)
+    # done = True
 
 
 def configure_traffic_manager(
@@ -532,7 +389,11 @@ def generate_infinite_segment(map: str):
             "last_rotation": None,
             "last_image": None,
         }
-        pid_controller = VehiclePIDController(ego_vehicle)
+        pid_controller = VehiclePIDController(
+            ego_vehicle,
+            {"K_P": 1.0, "K_D": 0.0, "K_I": 0.0, "dt": 1 / 20},
+            {"K_P": 1.0, "K_D": 0.0, "K_I": 0.0, "dt": 1 / 20},
+        )
 
         context = AppContext(
             client=client,
@@ -562,7 +423,7 @@ def generate_infinite_segment(map: str):
 def main():
     # Comma2k19 called this each batch by the date
     # TODO: Change back to Town01
-    seg = generate_infinite_segment("Town05")
+    seg = generate_infinite_segment("Town04")
     # chunks = {"Chunk_1": [batch1]}
     carla_client = setup_carla_client()
     settings = AppSettings(frame_rate=20, client=carla_client)

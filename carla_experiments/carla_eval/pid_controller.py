@@ -7,12 +7,13 @@
 
 import math
 from collections import deque
+from typing import Dict, Optional
 
 import carla
 import numpy as np
 
 
-def get_speed(vehicle: carla.Vehicle):
+def get_speed(vehicle):
     """
     Compute speed of a vehicle in Km/h.
 
@@ -33,9 +34,9 @@ class VehiclePIDController:
 
     def __init__(
         self,
-        vehicle,
-        args_lateral=None,
-        args_longitudinal=None,
+        vehicle: carla.Vehicle,
+        args_lateral: Optional[Dict] = None,
+        args_longitudinal: Optional[Dict] = None,
         offset=0,
         max_throttle=0.75,
         max_brake=0.3,
@@ -67,16 +68,12 @@ class VehiclePIDController:
         self._vehicle = vehicle
         self._world = self._vehicle.get_world()
         self.past_steering = self._vehicle.get_control().steer
-        args_longitudinal = dict() if args_longitudinal is None else args_longitudinal
-        args_lateral = dict() if args_lateral is None else args_lateral
-        self._lon_controller = PIDLongitudinalController(
-            self._vehicle, **args_longitudinal
-        )
-        self._lat_controller = PIDLateralController(
-            self._vehicle, offset, **args_lateral
-        )
+        args_long = args_longitudinal or dict()
+        args_lat = args_lateral or dict()
+        self._lon_controller = PIDLongitudinalController(self._vehicle, **args_long)
+        self._lat_controller = PIDLateralController(self._vehicle, offset, **args_lat)
 
-    def run_step(self, target_speed, waypoint):
+    def run_step(self, target_speed: float, target_location: carla.Location):
         """
         Execute one step of control invoking both lateral and longitudinal
         PID controllers to reach a target waypoint
@@ -88,7 +85,7 @@ class VehiclePIDController:
         """
 
         acceleration = self._lon_controller.run_step(target_speed)
-        current_steering = self._lat_controller.run_step(waypoint)
+        current_steering = self._lat_controller.run_step(target_location)
         control = carla.VehicleControl()
         if acceleration >= 0.0:
             control.throttle = min(acceleration, self.max_throt)
@@ -222,7 +219,7 @@ class PIDLateralController:
         self._offset = offset
         self._e_buffer = deque(maxlen=10)
 
-    def run_step(self, waypoint):
+    def run_step(self, target_location: carla.Location):
         """
         Execute one step of lateral control to steer
         the vehicle towards a certain waypoin.
@@ -232,13 +229,16 @@ class PIDLateralController:
             -1 maximum steering to left
             +1 maximum steering to right
         """
-        return self._pid_control(waypoint, self._vehicle.get_transform())
+        return self._pid_control(target_location, self._vehicle.get_transform())
 
     def set_offset(self, offset):
         """Changes the offset"""
         self._offset = offset
 
-    def _pid_control(self, waypoint, vehicle_transform):
+    # def _pid_control(self, waypoint, vehicle_transform):
+    def _pid_control(
+        self, target_location: carla.Location, vehicle_transform: carla.Transform
+    ):
         """
         Estimate the steering angle of the vehicle based on the PID equations
 
@@ -251,16 +251,16 @@ class PIDLateralController:
         v_vec = vehicle_transform.get_forward_vector()
         v_vec = np.array([v_vec.x, v_vec.y, 0.0])
 
-        # Get the vector vehicle-target_wp
-        if self._offset != 0:
-            # Displace the wp to the side
-            w_tran = waypoint.transform
-            r_vec = w_tran.get_right_vector()
-            w_loc = w_tran.location + carla.Location(
-                x=self._offset * r_vec.x, y=self._offset * r_vec.y
-            )
-        else:
-            w_loc = waypoint.transform.location
+        # # Get the vector vehicle-target_wp
+        # if self._offset != 0:
+        #     # Displace the wp to the side
+        #     w_tran = waypoint.transform
+        #     r_vec = w_tran.get_right_vector()
+        #     w_loc = w_tran.location + carla.Location(x=self._offset*r_vec.x,
+        #                                                  y=self._offset*r_vec.y)
+        # else:
+        #     w_loc = waypoint.transform.location
+        w_loc = target_location
 
         w_vec = np.array([w_loc.x - ego_loc.x, w_loc.y - ego_loc.y, 0.0])
 
