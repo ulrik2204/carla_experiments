@@ -38,7 +38,7 @@ from carla_experiments.common.utils_op_deepdive import (
 )
 from carla_experiments.models.op_deepdive import SequenceBaselineV1
 
-CKPT_PATH = "./.weights/carla_epoch_99.pth"
+CKPT_PATH = "./.weights/comma_epoch_99.pth"
 DT_CTRL = 0.01  # controlsd
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 start_time = time.time()
