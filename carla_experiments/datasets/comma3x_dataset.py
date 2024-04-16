@@ -13,123 +13,21 @@ from typing import (
 )
 
 import cv2
+import numpy as np
 import torch
 import torchvision.transforms as transforms
 from capnp.lib.capnp import _DynamicListReader, _DynamicStructReader
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import default_collate
 
+from carla_experiments.common.types_common import (
+    MetaTensors,
+    PlanTensors,
+    PoseTensors,
+    SupercomboGroundTruth,
+    SupercomboInput,
+)
 from carla_experiments.custom_logreader.custom_logreader import LogReader, ReadMode
-
-
-class Comma3xModelInput(TypedDict):
-    # desire: torch.Tensor  # shape: [batch_size, 100, 8], from model output
-    traffic_convention: torch.Tensor  # shape: [batch_size, 2]
-    lateral_control_params: torch.Tensor  # shape: [batch_size, 2]
-    # prev_desired_curv: torch.Tensor  # shape: [batch_size, 100, 1], from model output
-    nav_route: torch.Tensor  # shape: [batch_size, 256]
-    nav_instructions: torch.Tensor  # shape: [batch_size, 150]
-    # features_buffer: torch.Tensor  # shape: [batch_size, 99, 512], from model output
-    input_imgs: torch.Tensor  # shape: [batch_size, 12, 128, 256]
-    big_input_imgs: torch.Tensor  # shape: [batch_size, 12, 128, 256]
-
-
-class Comma3xModelOutput(TypedDict):
-    """Output of the model sliced. Original output size is [batch_size, 6504]"""
-
-    plan: torch.Tensor  # Shape([batch_size, 33, 15])
-    lane_lines: torch.Tensor  # Shape([batch_size, 4, 33, 2])
-    lane_line_probs: torch.Tensor  # Shape([batch_size, 8])
-    road_edges: torch.Tensor  # Shape([batch_size, 2, 33, 2])
-    lead: torch.Tensor  # Shape([batch_size, 3, 6, 4])
-    lead_prob: torch.Tensor  # Shape([batch_size, 3])
-    desire_state: torch.Tensor  # Shape([batch_size, 8])
-    meta: (
-        torch.Tensor
-    )  # Shape([batch_size, 48]) (has a lot of subslices) # TODO: THIS IS UNPROCESSABLE
-    desire_pred: torch.Tensor  # Shape([batch_size, 4, 8])
-    pose: torch.Tensor  # Shape([batch_size, 12]) but only the first 6 are used
-    wide_from_device_euler: (
-        torch.Tensor
-    )  # Shape([batch_size, 6]), but only the first 3 are used
-    sim_pose: torch.Tensor  # Shape([batch_size, 12]), but only the first 6 are used
-    road_transform: (
-        torch.Tensor
-    )  # Shape([batch_size, 12]), but only the first 6 are used
-    desired_curature: (
-        torch.Tensor
-    )  # Shape([batch_size, 2]), but only the first 1 is used
-    hidden_state: torch.Tensor  # Shape([batch_size, 512])
-
-
-class PlanGT(TypedDict):
-    position: torch.Tensor  # Shape([batch_size, 33, 3])
-    position_stds: torch.Tensor  # Shape([batch_size, 33, 3])
-    velocity: torch.Tensor  # Shape([batch_size, 33, 3])
-    acceleration: torch.Tensor  # Shape([batch_size, 33, 3])
-    t_from_current_euler: torch.Tensor  # Shape([batch_size, 33, 3]), aka orientation
-    orientation_rate: torch.Tensor  # Shape([batch_size, 33, 3])
-
-
-class DisengagePredictionsGT(TypedDict):
-    brake_disengage_probs: torch.Tensor  # Shape([batch_size, 5])
-    gas_disengage_probs: torch.Tensor  # Shape([batch_size, 5])
-    steer_override_probs: torch.Tensor  # Shape([batch_size, 5])
-    brake_3_meters_per_second_squared_probs: torch.Tensor  # Shape([batch_size, 5])
-    brake_4_meters_per_second_squared_probs: torch.Tensor  # Shape([batch_size, 5])
-    brake_5_meters_per_second_squared_probs: torch.Tensor  # Shape([batch_size, 5])
-
-
-class MetaGT(TypedDict):
-    engaged_prob: torch.Tensor  # Shape([batch_size, 1])
-    disengage_predictions: DisengagePredictionsGT  # Shape([batch_size, 5, 6])
-    # These are not accessible in RLOG
-    # leftBlinkerProb: torch.Tensor  # Shape([batch_size, 6])
-    # rightBlinkerProb: torch.Tensor  # Shape([batch_size, 6])
-
-
-class PoseGT(TypedDict):
-    trans: torch.Tensor  # Shape([batch_size, 3])
-    rot: torch.Tensor  # Shape([batch_size, 3])
-    transStd: torch.Tensor  # Shape([batch_size, 3])
-    rotStd: torch.Tensor  # Shape([batch_size, 3])
-
-
-class Comma3xModelGroundTruth(TypedDict):
-    plan: PlanGT
-    lane_lines: torch.Tensor  # Shape([batch_size, 4, 33, 2])
-    lane_line_probs: torch.Tensor  # Shape([batch_size, 8])
-    lane_line_stds: torch.Tensor  # Shape([batch_size, 4])
-    road_edges: torch.Tensor  # Shape([batch_size, 2, 33, 2])
-    lead: torch.Tensor  # Shape([batch_size, 3, 6, 4])
-    lead_stds: torch.Tensor  # Shape([batch_size, 3, 6, 4])
-    lead_prob: torch.Tensor  # Shape([batch_size, 3])
-    desire_state: torch.Tensor  # Shape([batch_size, 8])
-    meta: MetaGT
-    desire_pred: torch.Tensor  # Shape([batch_size, 4, 8])
-    pose: PoseGT
-    wide_from_device_euler: (
-        torch.Tensor
-    )  # Shape([batch_size, 3]), only using the first 3
-    wide_from_device_euler_std: torch.Tensor  # Shape([batch_size, 3]) last 3
-    sim_pose: PoseGT
-    road_transform: (
-        torch.Tensor
-    )  # Shape([batch_size, 3]), comes from road_transofrm (of 6 first 3)
-    road_transform_std: torch.Tensor  # Shape([batch_size, 3]) last 3
-    desired_curvature: torch.Tensor  # Shape([batch_size, 1]), only using the first one
-
-
-class Shapes:
-    DESIRES = (100, 8)
-    TRAFFIC_CONVENTION = (2,)
-    LATERAL_CONTROL_PARAMS = (2,)
-    PREV_DESIRED_CURV = (100, 1)
-    NAV_FEATURES = (256,)
-    NAV_INSTRUCTIONS = (150,)
-    FEATURES_BUFFER = (99, 512)
-    INPUT_IMGS = (12, 128, 256)
-    BIG_INPUT_IMGS = (12, 128, 256)
 
 
 @dataclass
@@ -163,7 +61,7 @@ class DisengagePredictions:
 
 
 @dataclass
-class Meta:
+class MetaData:
     engagedProb: float
     desirePrediction: List[float]  # length 32
     desireState: List[float]  # length 8
@@ -211,7 +109,7 @@ class ModelV2OutputData:
     laneLineProbs: List[float]
     roadEdges: List[XYZT]  # length 2
     roadEdgeStds: List[float]  # length 2
-    meta: Meta
+    meta: MetaData
     laneLineStds: List[float]  # length 4
     roadEdgeStds: List[float]  # length 2
     # modelExecutionTime: float
@@ -400,7 +298,7 @@ def model_outputs_rlog_to_tensors(
     modelv2: ModelV2OutputData,
     camera_odometry: CameraOdometryOutputData,
     device: str = "cuda",
-) -> Comma3xModelGroundTruth:
+) -> SupercomboGroundTruth:
     """Inputs a modelv2 object and returns the (1, 5992) size tensor
     including all the outputs from the model excluding the
     hidden state (which has size (1, 512)).
@@ -446,7 +344,7 @@ def model_outputs_rlog_to_tensors(
         device=device,
         dtype=torch.float32,
     ).reshape((len(modelv2.orientationRate.x), 3))
-    plan: PlanGT = {
+    plan: PlanTensors = {
         "position": position,
         "position_stds": position_stds,
         "velocity": velocity,
@@ -491,45 +389,43 @@ def model_outputs_rlog_to_tensors(
     desire_pred = torch.tensor(
         modelv2.meta.desirePrediction, device=device, dtype=torch.float32
     )
-    meta: MetaGT = {
+    meta: MetaTensors = {
         "engaged_prob": torch.tensor(
             modelv2.meta.engagedProb, device=device, dtype=torch.float32
         ),
-        "disengage_predictions": {
-            "brake_disengage_probs": torch.tensor(
-                modelv2.meta.disengagePredictions.brakeDisengageProbs,
-                device=device,
-                dtype=torch.float32,
-            ),
-            "gas_disengage_probs": torch.tensor(
-                modelv2.meta.disengagePredictions.gasDisengageProbs,
-                device=device,
-                dtype=torch.float32,
-            ),
-            "steer_override_probs": torch.tensor(
-                modelv2.meta.disengagePredictions.steerOverrideProbs,
-                device=device,
-                dtype=torch.float32,
-            ),
-            "brake_3_meters_per_second_squared_probs": torch.tensor(
-                modelv2.meta.disengagePredictions.brake3MetersPerSecondSquaredProbs,
-                device=device,
-                dtype=torch.float32,
-            ),
-            "brake_4_meters_per_second_squared_probs": torch.tensor(
-                modelv2.meta.disengagePredictions.brake4MetersPerSecondSquaredProbs,
-                device=device,
-                dtype=torch.float32,
-            ),
-            "brake_5_meters_per_second_squared_probs": torch.tensor(
-                modelv2.meta.disengagePredictions.brake5MetersPerSecondSquaredProbs,
-                device=device,
-                dtype=torch.float32,
-            ),
-        },
+        "brake_disengage_probs": torch.tensor(
+            modelv2.meta.disengagePredictions.brakeDisengageProbs,
+            device=device,
+            dtype=torch.float32,
+        ),
+        "gas_disengage_probs": torch.tensor(
+            modelv2.meta.disengagePredictions.gasDisengageProbs,
+            device=device,
+            dtype=torch.float32,
+        ),
+        "steer_override_probs": torch.tensor(
+            modelv2.meta.disengagePredictions.steerOverrideProbs,
+            device=device,
+            dtype=torch.float32,
+        ),
+        "brake_3_meters_per_second_squared_probs": torch.tensor(
+            modelv2.meta.disengagePredictions.brake3MetersPerSecondSquaredProbs,
+            device=device,
+            dtype=torch.float32,
+        ),
+        "brake_4_meters_per_second_squared_probs": torch.tensor(
+            modelv2.meta.disengagePredictions.brake4MetersPerSecondSquaredProbs,
+            device=device,
+            dtype=torch.float32,
+        ),
+        "brake_5_meters_per_second_squared_probs": torch.tensor(
+            modelv2.meta.disengagePredictions.brake5MetersPerSecondSquaredProbs,
+            device=device,
+            dtype=torch.float32,
+        ),
     }
     # TODO: NEED TO DEFINED camera_odometry first
-    pose: PoseGT = {
+    pose: PoseTensors = {
         "trans": torch.tensor(
             camera_odometry.trans, device=device, dtype=torch.float32
         ),
@@ -547,7 +443,7 @@ def model_outputs_rlog_to_tensors(
     wide_from_device_euler_std = torch.tensor(
         camera_odometry.wideFromDeviceEulerStd, device=device, dtype=torch.float32
     )
-    sim_pose: PoseGT = {
+    sim_pose: PoseTensors = {
         "trans": torch.tensor(
             modelv2.temporalPose.trans, device=device, dtype=torch.float32
         ),
@@ -658,15 +554,63 @@ def get_all_relevant_data_from_rlog(
     return relevant_data
 
 
-class CurrentFrames(NamedTuple):
-    segment_index: int
-    wide_angle_frames: List[torch.Tensor]
-    narrow_frames: List[torch.Tensor]
+def concat_current_with_previous_frame(frames_tensor: torch.Tensor):
+    # Check if the input tensor has the correct shape
+
+    # Initialize a list to hold the concatenated tensors
+    concatenated_tensors = []
+
+    # Concatenate the first image with itself
+    concatenated_tensors.append(torch.cat([frames_tensor[0], frames_tensor[0]], dim=2))
+
+    # Iterate over the remaining images
+    for i in range(1, frames_tensor.size(0)):
+        # Concatenate current image with the previous image along the channel axis
+        concatenated_tensors.append(
+            torch.cat([frames_tensor[i - 1], frames_tensor[i]], dim=2)
+        )
+
+    # Stack all concatenated images into a single tensor
+    output_tensor = torch.stack(concatenated_tensors)
+
+    return output_tensor
 
 
-class CurrentRlog(NamedTuple):
-    segment_index: int
-    relevant_data: List[RlogImportantData]
+def get_lateral_control_params_tensor_from_rlog(
+    rlog_relevant: List[RlogImportantData], device: str = "cuda"
+):
+
+    v_ego = torch.tensor(
+        [log.vEgo for log in rlog_relevant], device=device, dtype=torch.float32
+    )
+    steer_actuator_delay = torch.tensor(
+        [log.steerActuatorDelay for log in rlog_relevant],
+        device=device,
+        dtype=torch.float32,
+    )
+    # add 0.2 as they do in Openpilot for estimating other delays
+    steer_delay = steer_actuator_delay + 0.2
+    lateral_control_params = torch.cat(
+        (v_ego.unsqueeze(1), steer_delay.unsqueeze(1)), dim=1
+    )
+    return lateral_control_params
+
+
+def get_traffic_conventions_tensor_from_rlog(
+    rlog_relevant: List[RlogImportantData], device: str = "cuda"
+):
+
+    # traffic_convention
+    return torch.stack(
+        [
+            torch.tensor(
+                [0.0, 1.0] if log.isRHD else [1.0, 0.0],
+                device=device,
+                dtype=torch.float32,
+            )
+            for log in rlog_relevant
+        ],
+    )
 
 
 class Comma3xDataset(Dataset):
@@ -742,91 +686,24 @@ class Comma3xDataset(Dataset):
             padding_after=100,
         )[self.segment_start_idx : self.segment_end_idx]
 
-    def __getitem__(
-        self, idx: int
-    ) -> Tuple[Comma3xModelInput, Comma3xModelGroundTruth]:
-        # TODO: Currently not getting the last two frames, fix
-        # TODO: Process images
+    def __getitem__(self, idx: int) -> Tuple[SupercomboInput, SupercomboGroundTruth]:
         narrow_frames, wide_angle_frames = self._get_video_frames(idx)
+        narrow_frames = concat_current_with_previous_frame(narrow_frames)
+        wide_angle_frames = concat_current_with_previous_frame(wide_angle_frames)
         rlog_relevant = self._get_relevant_data_from_rlog(idx)
-        # current_and_previous_desires = torch.tensor(
-        #     [
-        #         item.desireState
-        #         for item in reversed(self.current_rlog_relevant_data[: idx + 1])
-        #     ]
-        # )
-        # Desire
-        # Pad desire with 0 vectors to reach 100
-        # desires = torch.zeros(Shapes.DESIRES)
-        # desires[: current_and_previous_desires.shape[0]] = current_and_previous_desires
-        # desires[:, 0] = 0.0
-        # lateral_control_params
-        v_ego = torch.tensor(
-            [log.vEgo for log in rlog_relevant], device=self.device, dtype=torch.float32
+        traffic_convention = get_traffic_conventions_tensor_from_rlog(
+            rlog_relevant, device=self.device
         )
-        steer_actuator_delay = torch.tensor(
-            [log.steerActuatorDelay for log in rlog_relevant],
-            device=self.device,
-            dtype=torch.float32,
-        )
-        # add 0.2 as they do in Openpilot for estimating other delays
-        steer_delay = steer_actuator_delay + 0.2
-        lateral_control_params = torch.cat(
-            (v_ego.unsqueeze(1), steer_delay.unsqueeze(1)), dim=1
-        )
-
-        # traffic_convention
-        traffic_convention = torch.stack(
-            [
-                torch.tensor(
-                    [0.0, 1.0] if log.isRHD else [1.0, 0.0],
-                    device=self.device,
-                    dtype=torch.float32,
-                )
-                for log in rlog_relevant
-            ],
-        )
-
-        # nav_instructions
-        nav_instructions = torch.stack(
-            [
-                (
-                    torch.tensor(
-                        log.navInstructionAllManeuvers,
-                        device=self.device,
-                        dtype=torch.float32,
-                    )
-                    if log.navInstructionAllManeuvers is not None
-                    else torch.zeros(
-                        Shapes.NAV_INSTRUCTIONS, device=self.device, dtype=torch.float32
-                    )
-                )
-                for log in rlog_relevant
-            ]
-        )
-        nav_features = torch.stack(
-            [
-                (
-                    torch.tensor(
-                        log.navModelFeatures, device=self.device, dtype=torch.float32
-                    )
-                    if log.navModelFeatures is not None
-                    else torch.zeros(
-                        Shapes.NAV_FEATURES, device=self.device, dtype=torch.float32
-                    )
-                )
-                for log in rlog_relevant
-            ]
+        lateral_control_params = get_lateral_control_params_tensor_from_rlog(
+            rlog_relevant, device=self.device
         )
 
         # TODO: Maybe change to tuple instead of dict depending on model?
-        model_inputs: Comma3xModelInput = {
+        model_inputs: SupercomboInput = {
             # "desire": desires,
             "traffic_convention": traffic_convention,
             "lateral_control_params": lateral_control_params,
             # "prev_desired_curv": torch.zeros([100, 1]),  # TODO: Remove
-            "nav_features": nav_features,
-            "nav_instructions": nav_instructions,
             # "features_buffer": torch.zeros([99, 512]),  # TODO: Remove
             # In Openpilot you can choose whether to mainly use narrow or wide frames, here maining narrow
             "input_imgs": narrow_frames,
@@ -845,7 +722,7 @@ class Comma3xDataset(Dataset):
 
 
 def get_dict_shape(d: Any):
-    if type(d) is torch.Tensor:
+    if type(d) is torch.Tensor or type(d) is np.ndarray:
         return d.shape
     return {key: get_dict_shape(value) for key, value in d.items()}
 
