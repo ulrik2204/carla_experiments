@@ -1,16 +1,42 @@
-from typing import TypedDict
+from typing import Generic, TypedDict, TypeVar, Union
 
+import numpy as np
 import torch
 
 
-class SupercomboInput(TypedDict):
-    # desire: torch.Tensor  # shape: [batch_size, 100, 8], from model output
+class SupercomboPartialNumpyInput(TypedDict):
+    traffic_convention: np.ndarray  # shape: [batch_size, 2]
+    lateral_control_params: np.ndarray  # shape: [batch_size, 2]
+    input_imgs: np.ndarray  # shape: [batch_size, 12, 128, 256]
+    big_input_imgs: np.ndarray  # shape: [batch_size, 12, 128, 256]
+
+
+class SupercomboPartialTorchInput(TypedDict):
     traffic_convention: torch.Tensor  # shape: [batch_size, 2]
     lateral_control_params: torch.Tensor  # shape: [batch_size, 2]
-    # prev_desired_curv: torch.Tensor  # shape: [batch_size, 100, 1], from model output
-    # features_buffer: torch.Tensor  # shape: [batch_size, 99, 512], from model output
     input_imgs: torch.Tensor  # shape: [batch_size, 12, 128, 256]
     big_input_imgs: torch.Tensor  # shape: [batch_size, 12, 128, 256]
+
+
+class SupercomboFullNumpyInputs(TypedDict):
+    input_imgs: np.ndarray
+    big_input_imgs: np.ndarray
+    desire: np.ndarray
+    traffic_convention: np.ndarray
+    lateral_control_params: np.ndarray
+    prev_desired_curv: np.ndarray
+    features_buffer: np.ndarray
+
+
+# Class for Torch Tensor inputs
+class SupercomboFullTorchInputs(TypedDict):
+    input_imgs: torch.Tensor
+    big_input_imgs: torch.Tensor
+    desire: torch.Tensor
+    traffic_convention: torch.Tensor
+    lateral_control_params: torch.Tensor
+    prev_desired_curv: torch.Tensor
+    features_buffer: torch.Tensor
 
 
 class PlanTensors(TypedDict):
@@ -20,6 +46,27 @@ class PlanTensors(TypedDict):
     acceleration: torch.Tensor  # Shape([batch_size, 33, 3])
     t_from_current_euler: torch.Tensor  # Shape([batch_size, 33, 3]), aka orientation
     orientation_rate: torch.Tensor  # Shape([batch_size, 33, 3])
+
+
+class PlanSliced(TypedDict):
+    position: torch.Tensor  # Shape([batch_size, 33, 3])
+    velocity: torch.Tensor  # Shape([batch_size, 33, 3])
+    acceleration: torch.Tensor  # Shape([batch_size, 33, 3])
+    t_from_current_euler: torch.Tensor  # Shape([batch_size, 33, 3]), aka orientation
+    orientation_rate: torch.Tensor  # Shape([batch_size, 33, 3])
+
+
+class MetaSliced(TypedDict):
+    engaged: torch.Tensor  # Shape([batch_size, 1])
+    brake_disengage: torch.Tensor  # Shape([batch_size, 5])
+    gas_disengage: torch.Tensor  # Shape([batch_size, 5])
+    steer_override: torch.Tensor  # Shape([batch_size, 5])
+    hard_brake_3: torch.Tensor  # Shape([batch_size, 5])
+    hard_brake_4: torch.Tensor  # Shape([batch_size, 5])
+    hard_brake_5: torch.Tensor  # Shape([batch_size, 5])
+    gas_press: torch.Tensor  # Shape([batch_size, 5])
+    left_blinker: torch.Tensor  # Shape([batch_size, 6])
+    right_blinker: torch.Tensor  # Shape([batch_size, 6])
 
 
 class MetaTensors(TypedDict):
@@ -42,12 +89,13 @@ class PoseTensors(TypedDict):
     rotStd: torch.Tensor  # Shape([batch_size, 3])
 
 
-class SupercomboGroundTruth(TypedDict):
+class SupercomboPartialOutput(TypedDict):
     plan: PlanTensors
     lane_lines: torch.Tensor  # Shape([batch_size, 4, 33, 2])
     lane_line_probs: torch.Tensor  # Shape([batch_size, 8])
     lane_line_stds: torch.Tensor  # Shape([batch_size, 4])
     road_edges: torch.Tensor  # Shape([batch_size, 2, 33, 2])
+    road_edge_stds: torch.Tensor  # Shape([batch_size, 2])
     lead: torch.Tensor  # Shape([batch_size, 3, 6, 4])
     lead_stds: torch.Tensor  # Shape([batch_size, 3, 6, 4])
     lead_prob: torch.Tensor  # Shape([batch_size, 3])
@@ -67,7 +115,7 @@ class SupercomboGroundTruth(TypedDict):
     desired_curvature: torch.Tensor  # Shape([batch_size, 1]), only using the first one
 
 
-class SupercomboOutput(SupercomboGroundTruth):
+class SupercomboFullOutput(SupercomboPartialOutput):
     hidden_state: torch.Tensor  # Shape([batch_size, 512]
 
 

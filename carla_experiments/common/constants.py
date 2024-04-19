@@ -24,7 +24,7 @@ class SupercomboInputShapes(Constant):
 SUPERCOMBO_OUTPUT_SLICES = {
     "plan": slice(0, 4955, None),
     "lane_lines": slice(4955, 5483, None),
-    "lane_lines_prob": slice(5483, 5491, None),
+    "lane_line_probs": slice(5483, 5491, None),
     "road_edges": slice(5491, 5755, None),
     "lead": slice(5755, 5857, None),
     "lead_prob": slice(5857, 5860, None),

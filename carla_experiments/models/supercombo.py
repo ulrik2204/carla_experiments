@@ -2,12 +2,15 @@ import itertools
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Literal, Type, TypedDict, TypeVar, Union, cast
+from turtle import forward
+from typing import Any, Dict, Mapping, Tuple, Type, TypeVar, Union, cast
 
 import numpy as np
 import onnx
 import onnxruntime as ort
 import torch
+import torch.nn as nn
+from onnx2pytorch import ConvertModel
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -20,14 +23,313 @@ from carla_experiments.common.constants import (
 from carla_experiments.common.openpilot_repo import download_github_file
 from carla_experiments.common.types_common import (
     FirstSliceSupercomboOutput,
+    MetaSliced,
     MetaTensors,
+    PlanSliced,
     PlanTensors,
-    SupercomboOutput,
+    PoseTensors,
+    SupercomboFullNumpyInputs,
+    SupercomboFullOutput,
+    SupercomboFullTorchInputs,
+    SupercomboPartialNumpyInput,
+    SupercomboPartialOutput,
 )
 from carla_experiments.datasets.comma3x_dataset import Comma3xDataset, get_dict_shape
 
 PATH_TO_ONNX = Path(".weights/supercombo.onnx")
 PATH_TO_METADATA = Path(".weights/supercombo_metadata.pkl")
+
+
+class SupercomboONNX:
+
+    def __init__(self) -> None:
+
+        # self.onnx_model = onnx.load(PATH_TO_ONNX.as_posix())
+        # print("onnx_model", onnx.checker.check_model(self.onnx_model))
+        self.sess = get_supercombo_onnx_model(PATH_TO_ONNX)
+        # TODO: need to get CUDAExecutionProvider working
+
+    def __repr__(self) -> str:
+        return str(self.sess)
+
+    def __call__(self, inputs: SupercomboFullNumpyInputs) -> np.ndarray:
+        pred = self.sess.run(None, inputs)
+        return pred[0]  # only use the first result which is the [1, 6504] tensor
+
+
+class SupercomboTorch(torch.nn.Module):
+
+    def __init__(self) -> None:
+        super().__init__()
+        onx = onnx.load(PATH_TO_ONNX.as_posix())
+        self.model = ConvertModel(onx)
+
+    def forward(self, x: SupercomboFullTorchInputs):
+        return self.model(x)
+
+
+def get_supercombo_onnx_model(path: Path) -> ort.InferenceSession:
+    if not path.exists():
+        download_github_file(
+            repo_owner="commaai",
+            repo_name="openpilot",
+            file_path_in_repo="selfdrive/modeld/models/supercombo.onnx",
+            save_path=path,
+            saved_at="git-lfs",
+            main_branch_name="master",
+        )
+    return create_ort_session(path.as_posix(), fp16_to_fp32=True)
+
+
+def torch_dict_to_numpy(inputs, dtype=np.float32) -> Dict[str, np.ndarray]:
+    result = dict()
+    for k, v in inputs.items():
+        if isinstance(v, torch.Tensor):
+            result[k] = v.cpu().numpy().astype(dtype)
+        elif isinstance(v, dict):
+            result[k] = torch_dict_to_numpy(v)
+        else:
+            raise ValueError(f"Unsupported type {type(v)}")
+    return result
+
+
+# def sigmoid(x: torch.Tensor):
+#     return 1.0 / (1.0 + np.exp(-x))
+
+
+# def softmax(x, axis=-1):
+#     x -= np.max(x, axis=axis, keepdims=True)
+#     if x.dtype == np.float32 or x.dtype == np.float64:
+#         np.exp(x, out=x)
+#     else:
+#         x = np.exp(x)
+#     x /= np.sum(x, axis=axis, keepdims=True)
+#     return x
+
+
+def new_parse_mdn(
+    raw: torch.Tensor, in_N: int, out_N: int, out_shape: Tuple[int, ...]
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    device = raw.device
+    raw = raw.reshape((raw.shape[0], max(in_N, 1), -1))
+
+    n_values = (raw.shape[2] - out_N) // 2
+    pred_mu = raw[:, :, :n_values]
+    pred_std = torch.exp(raw[:, :, n_values : 2 * n_values])
+
+    if in_N > 1:
+        weights = torch.zeros(
+            (raw.shape[0], in_N, out_N), device=device, dtype=raw.dtype
+        )
+        for i in range(out_N):
+            weights[:, :, i - out_N] = torch.softmax(raw[:, :, i - out_N], dim=-1)
+
+        if out_N == 1:
+            for fidx in range(weights.shape[0]):
+                idxs = torch.argsort(weights[fidx][:, 0], descending=True)
+                weights[fidx] = weights[fidx][idxs]
+                pred_mu[fidx] = pred_mu[fidx][idxs]
+                pred_std[fidx] = pred_std[fidx][idxs]
+
+        pred_mu_final = torch.zeros(
+            (raw.shape[0], out_N, n_values), device=device, dtype=raw.dtype
+        )
+        pred_std_final = torch.zeros(
+            (raw.shape[0], out_N, n_values), device=device, dtype=raw.dtype
+        )
+        for fidx in range(weights.shape[0]):
+            for hidx in range(out_N):
+                idxs = torch.argsort(weights[fidx, :, hidx], descending=True)
+                pred_mu_final[fidx, hidx] = pred_mu[fidx, idxs[0]]
+                pred_std_final[fidx, hidx] = pred_std[fidx, idxs[0]]
+    else:
+        pred_mu_final = pred_mu
+        pred_std_final = pred_std
+
+    if out_N > 1:
+        final_shape = tuple([raw.shape[0], out_N] + list(out_shape))
+    else:
+        final_shape = tuple(
+            [
+                raw.shape[0],
+            ]
+            + list(out_shape)
+        )
+    final = pred_mu_final.reshape(final_shape)
+    final_stds = pred_std_final.reshape(final_shape)
+    return final, final_stds
+
+
+TOut = TypeVar("TOut")
+
+
+def slice_tensor_to_dict(
+    tensor: Union[np.ndarray, torch.Tensor],
+    slices: Dict[str, slice],
+    device="cuda",
+    output_type: Type[TOut] = dict,
+) -> TOut:
+    result = dict()
+    tensor = (
+        torch.tensor(tensor, device=device)
+        if not isinstance(tensor, torch.Tensor)
+        else tensor
+    )
+    for k, shape in slices.items():
+        if k not in output_type.__annotations__:
+            raise ValueError(f"Key {k} not in {output_type.__annotations__}")
+        result[k] = tensor[:, shape]  # type: ignore
+    return result  # type: ignore
+
+
+def parse_categorical_crossentropy(raw, out_shape=None):
+    if out_shape is not None:
+        raw = raw.reshape((raw.shape[0],) + out_shape)
+    return torch.softmax(raw, dim=-1)
+
+
+def parse_supercombo_outputs(
+    outputs: Union[torch.Tensor, np.ndarray]
+) -> SupercomboFullOutput:
+    outputs = (
+        torch.tensor(outputs) if not isinstance(outputs, torch.Tensor) else outputs
+    )
+    print("outputs", outputs.shape)
+    # TODO: Can't just put 0 here, that removed the batch size!
+    device = str(outputs.device)
+    outputs_sliced = slice_tensor_to_dict(
+        outputs,
+        SUPERCOMBO_OUTPUT_SLICES,
+        device=device,
+        output_type=FirstSliceSupercomboOutput,
+    )
+    # Reshaping the outputs to their values and stds
+    plan, plan_stds = new_parse_mdn(outputs_sliced["plan"], 5, 1, (33, 15))
+    lane_lines, lane_line_stds = new_parse_mdn(
+        outputs_sliced["lane_lines"], 0, 0, (4, 33, 2)
+    )
+    road_edges, road_edge_stds = new_parse_mdn(
+        outputs_sliced["road_edges"], 0, 0, (2, 33, 2)
+    )
+    pose, pose_stds = new_parse_mdn(outputs_sliced["pose"], 0, 0, (6,))
+    road_transform, road_transform_stds = new_parse_mdn(
+        outputs_sliced["road_transform"], 0, 0, (6,)
+    )
+    sim_pose, sim_pose_stds = new_parse_mdn(outputs_sliced["sim_pose"], 0, 0, (6,))
+    wide_from_device_euler, wide_from_device_euler_stds = new_parse_mdn(
+        outputs_sliced["wide_from_device_euler"], 0, 0, (3,)
+    )
+    lead, lead_stds = new_parse_mdn(outputs_sliced["lead"], 2, 3, (6, 4))
+    desired_curvature, _ = new_parse_mdn(
+        outputs_sliced["desired_curvature"], 0, 0, (1,)
+    )
+
+    # Desire and desire_pred are parsed with categorical crossentropy
+    desire_state = parse_categorical_crossentropy(outputs_sliced["desire_state"], (8,))
+    desire_pred = parse_categorical_crossentropy(outputs_sliced["desire_pred"], (4, 8))
+
+    # Probability logits are converted to probabilities with sigmoid
+    lane_line_probs = torch.sigmoid(outputs_sliced["lane_line_probs"])
+    lead_prob = torch.sigmoid(outputs_sliced["lead_prob"])
+    meta = torch.sigmoid(outputs_sliced["meta"])
+
+    # The meta and plan tensors need to be sliced further into their components
+    meta_sliced = slice_tensor_to_dict(
+        meta, SUPERCOMBO_META_SLICES, output_type=MetaSliced
+    )
+    plan_sliced = slice_tensor_to_dict(
+        plan[:, 0], SUPERCOMBO_PLAN_SLICES, output_type=PlanSliced
+    )
+    plan_stds_sliced = slice_tensor_to_dict(
+        plan_stds[:, 0], SUPERCOMBO_PLAN_SLICES, output_type=PlanSliced
+    )
+
+    plan_dict: PlanTensors = {
+        "position": plan_sliced["position"],
+        "position_stds": plan_stds_sliced["position"],
+        "velocity": plan_sliced["position"],
+        "acceleration": plan_sliced["acceleration"],
+        "t_from_current_euler": plan_sliced["t_from_current_euler"],
+        "orientation_rate": plan_sliced["orientation_rate"],
+    }
+    meta_dict: MetaTensors = {
+        "engaged_prob": meta_sliced["engaged"],
+        "brake_disengage_probs": meta_sliced["brake_disengage"],
+        "gas_disengage_probs": meta_sliced["gas_disengage"],
+        "steer_override_probs": meta_sliced["steer_override"],
+        "brake_3_meters_per_second_squared_probs": meta_sliced["hard_brake_3"],
+        "brake_4_meters_per_second_squared_probs": meta_sliced["hard_brake_4"],
+        "brake_5_meters_per_second_squared_probs": meta_sliced["hard_brake_5"],
+    }
+
+    # The pose and sim_pose tensors are sliced into their components
+    print("pose", pose.shape)
+    print("pose_stds", pose_stds.shape)
+    pose_dict: PoseTensors = {
+        "trans": pose[:, :3],
+        "rot": pose[:, 3:],
+        "transStd": pose_stds[:, :3],
+        "rotStd": pose_stds[:, 3:],
+    }
+    print("sim_pose", sim_pose.shape)
+    print("sim_pose_stds", sim_pose_stds.shape)
+    sim_pose_dict: PoseTensors = {
+        "trans": sim_pose[:, :3],
+        "rot": sim_pose[:, 3:],
+        "transStd": sim_pose_stds[:, :3],
+        "rotStd": sim_pose_stds[:, 3:],
+    }
+
+    return {
+        "plan": plan_dict,
+        "lane_lines": lane_lines,
+        "lane_line_probs": lane_line_probs[:, 1::2],
+        "lane_line_stds": lane_line_stds[:, :, 0, 0],
+        "road_edges": road_edges,
+        "road_edge_stds": road_edge_stds[:, :, 0, 0],
+        # TODO: Continue end slicing here
+        "lead": lead,
+        "lead_stds": lead_stds,
+        "lead_prob": lead_prob,
+        "desire_state": desire_state,
+        "meta": meta_dict,
+        "desire_pred": desire_pred,
+        "pose": pose_dict,
+        "wide_from_device_euler": wide_from_device_euler,
+        "wide_from_device_euler_std": wide_from_device_euler_stds,
+        "sim_pose": sim_pose_dict,
+        "road_transform": road_transform[:, :3],
+        "road_transform_std": road_transform_stds[:, :3],
+        "desired_curvature": desired_curvature[:, 0],
+        "hidden_state": outputs_sliced["hidden_state"],
+    }
+
+
+def total_loss(pred: dict, ground_truth: dict) -> float:
+    diffs = []
+    for key, value in pred.items():
+        if isinstance(value, torch.Tensor):
+            diff = float(torch.sum(value - ground_truth[key]))
+            diffs.append(diff)
+        if isinstance(value, dict):
+            diff = float(total_loss(value, ground_truth[key]))
+            diffs.append(diff)
+    return sum(diffs) / len(diffs)
+
+
+TTensorDict = TypeVar("TTensorDict", bound=Mapping)
+
+
+def supercombo_tensors_at_idx(tensors_dict: TTensorDict, idx) -> TTensorDict:
+    dic = {}
+    for key, item in tensors_dict.items():
+        if isinstance(item, torch.Tensor) or isinstance(item, np.ndarray):
+            dic[key] = item[:, idx]
+        elif isinstance(item, dict):
+            dic[key] = supercombo_tensors_at_idx(item, idx)
+        else:
+            raise ValueError("Not supported type: " + str(type(item)))
+    return cast(TTensorDict, dic)
 
 
 def attributeproto_fp16_to_fp32(attr):
@@ -83,201 +385,16 @@ def create_ort_session(path, fp16_to_fp32):
     return ort_session
 
 
-class SupercomboInputs(TypedDict):
-    input_imgs: np.ndarray
-    big_input_imgs: np.ndarray
-    desire: np.ndarray
-    traffic_convention: np.ndarray
-    lateral_control_params: np.ndarray
-    prev_desired_curv: np.ndarray
-    features_buffer: np.ndarray
-
-
-class Supercombo:
-
-    def __init__(self, mode: Literal["infer"] = "infer") -> None:
-
-        if not PATH_TO_ONNX.exists():
-            download_github_file(
-                repo_owner="commaai",
-                repo_name="openpilot",
-                file_path_in_repo="selfdrive/modeld/models/supercombo.onnx",
-                save_path=PATH_TO_ONNX,
-                saved_at="git-lfs",
-                main_branch_name="master",
-            )
-        # self.onnx_model = onnx.load(PATH_TO_ONNX.as_posix())
-        # print("onnx_model", onnx.checker.check_model(self.onnx_model))
-        print("available", ort.get_available_providers())
-        print("pat", PATH_TO_ONNX.as_posix())
-        self.sess = create_ort_session(PATH_TO_ONNX.as_posix(), fp16_to_fp32=True)
-        # TODO: need to get CUDAExecutionProvider working
-        ins = [
-            {"name": item.name, "shape": item.shape, "type": item.type}
-            for item in self.sess.get_inputs()
-        ]
-        outputs = [
-            {"name": item.name, "shape": item.shape, "type": item.type}
-            for item in self.sess.get_outputs()
-        ]
-        print("inputs", ins)
-        print("outputs", outputs)
-
-    def __repr__(self) -> str:
-        return str(self.sess)
-
-    def __call__(self, inputs: SupercomboInputs) -> np.ndarray:
-        pred = self.sess.run(None, inputs)
-        return pred
-
-
-def torch_dict_to_numpy(inputs, dtype=np.float32) -> Dict[str, np.ndarray]:
-    result = dict()
-    for k, v in inputs.items():
-        if isinstance(v, torch.Tensor):
-            result[k] = v.cpu().numpy().astype(dtype)
-        elif isinstance(v, dict):
-            result[k] = torch_dict_to_numpy(v)
-        else:
-            raise ValueError(f"Unsupported type {type(v)}")
-    return result
-
-
-def sigmoid(x):
-    return 1.0 / (1.0 + np.exp(-x))
-
-
-def softmax(x, axis=-1):
-    x -= np.max(x, axis=axis, keepdims=True)
-    if x.dtype == np.float32 or x.dtype == np.float64:
-        np.exp(x, out=x)
-    else:
-        x = np.exp(x)
-    x /= np.sum(x, axis=axis, keepdims=True)
-    return x
-
-
-def new_parse_mdn(input_tensor, in_N=0, out_N=1, out_shape=None):
-    raw = input_tensor
-    raw = raw.reshape((raw.shape[0], max(in_N, 1), -1))
-    # print("raw1", raw.shape, raw)
-
-    n_values = (raw.shape[2] - out_N) // 2
-    pred_mu = raw[:, :, :n_values]
-    pred_std = np.exp(raw[:, :, n_values : 2 * n_values])
-    # print("pred_mu1", pred_mu.shape, pred_mu)
-
-    if in_N > 1:
-        weights = np.zeros((raw.shape[0], in_N, out_N), dtype=raw.dtype)
-        for i in range(out_N):
-            # print("weights index shape", raw[:,:,i - out_N].shape)
-            weights[:, :, i - out_N] = softmax(raw[:, :, i - out_N], axis=-1)
-
-        if out_N == 1:
-            for fidx in range(weights.shape[0]):
-                idxs = np.argsort(weights[fidx][:, 0])[::-1]
-                weights[fidx] = weights[fidx][idxs]
-                pred_mu[fidx] = pred_mu[fidx][idxs]
-                pred_std[fidx] = pred_std[fidx][idxs]
-
-        pred_mu_final = np.zeros((raw.shape[0], out_N, n_values), dtype=raw.dtype)
-        pred_std_final = np.zeros((raw.shape[0], out_N, n_values), dtype=raw.dtype)
-        for fidx in range(weights.shape[0]):
-            for hidx in range(out_N):
-                idxs = np.argsort(weights[fidx, :, hidx])[::-1]
-                pred_mu_final[fidx, hidx] = pred_mu[fidx, idxs[0]]
-                pred_std_final[fidx, hidx] = pred_std[fidx, idxs[0]]
-        # print("pred_mu2", pred_mu_final.shape, pred_mu_final)
-    else:
-        pred_mu_final = pred_mu
-        pred_std_final = pred_std
-
-    if out_N > 1:
-        final_shape = tuple([raw.shape[0], out_N] + list(out_shape))
-    else:
-        final_shape = tuple(
-            [
-                raw.shape[0],
-            ]
-            + list(out_shape)
-        )
-    final = pred_mu_final.reshape(final_shape)
-    final_stds = pred_std_final.reshape(final_shape)
-    return final, final_stds
-
-
-# T = TypeVar("T", bound=Union[np.ndarray, torch.Tensor])
-TOut = TypeVar("TOut")
-
-
-def slice_tensor_to_dict(
-    tensor: Union[np.ndarray, torch.Tensor],
-    slices: Dict[str, slice],
-    _: Type[TOut] = dict,
-) -> TOut:
-    result = dict()
-    for k, shape in slices.items():
-        sliced = tensor[shape]  # type: ignore
-        result[k] = (
-            np.copy(sliced) if type(sliced) is np.ndarray else torch.clone(sliced)  # type: ignore
-        )
-    return result  # type: ignore
-
-
-def parse_categorical_crossentropy(raw, out_shape=None):
-    if out_shape is not None:
-        raw = raw.reshape((raw.shape[0],) + out_shape)
-    return softmax(raw, axis=-1)
-
-
-def parse_supercombo_outputs(outputs: np.ndarray) -> SupercomboOutput:
-    outputs_sliced = slice_tensor_to_dict(outputs, SUPERCOMBO_OUTPUT_SLICES)
-
-    meta_sliced = slice_tensor_to_dict(
-        outputs_sliced["meta"], SUPERCOMBO_META_SLICES, MetaTensors
-    )
-    plan_sliced = slice_tensor_to_dict(
-        outputs_sliced["plan"], SUPERCOMBO_PLAN_SLICES, PlanTensors
-    )
-
-    plan: PlanTensors = {
-        "position": 0,
-        "position_stds": 0,
-        "velocity": 0,
-        "acceleration": 0,
-        "t_from_current_euler": 0,
-        "orientation_rate": 0,
-    }
-
-    return {
-        "plan": torch.Tensor(),
-        "lane_lines": torch.Tensor(),
-        "lane_line_probs": torch.Tensor(),
-        "lane_line_stds": torch.Tensor(),
-        "road_edges": torch.Tensor(),
-        "lead": torch.Tensor(),
-        "lead_stds": torch.Tensor(),
-        "lead_prob": torch.Tensor(),
-        "desire_state": torch.Tensor(),
-        "meta": torch.Tensor(),
-        "desire_pred": torch.Tensor(),
-        "pose": torch.Tensor(),
-        "wide_from_device_euler": torch.Tensor(),
-        "wide_from_device_euler_std": torch.Tensor(),
-        "sim_pose": torch.Tensor(),
-        "road_transform": torch.Tensor(),
-        "road_transform_std": torch.Tensor(),
-        "desired_curvature": torch.Tensor(),
-        "hidden_state": torch.Tensor(),
-    }
-
-
 def main():
+    torch_model = SupercomboTorch()
+    print(torch_model)
 
-    model = Supercombo()
+    return
+    model = SupercomboONNX()
     segment_start_idx = 300
     segment_end_idx = 400
     batch_size = 1
+
     segment_length = segment_end_idx - segment_start_idx
     dataset = Comma3xDataset(
         folder="/home/ulrikro/datasets/CommaAI/2024_02_28_Orkdal",
@@ -288,7 +405,10 @@ def main():
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     for batch in tqdm(dataloader, position=1):
         inputs, ground_truth = batch
-        inputs_np = torch_dict_to_numpy(inputs, dtype=np.float32)
+        inputs_np = cast(
+            SupercomboPartialNumpyInput,
+            torch_dict_to_numpy(inputs, dtype=np.float32),
+        )
         # ground_truth_np = torch_dict_to_numpy(ground_truth, dtype=np.float32)
 
         # Recurrent inputs
@@ -302,22 +422,33 @@ def main():
             (batch_size,) + SupercomboInputShapes.DESIRES, dtype=np.float32
         )
         for i in tqdm(range(segment_length), position=2):
-            inputs: SupercomboInputs = {
-                "input_imgs": inputs_np["input_imgs"][:, i, :, :, :].transpose(
-                    0, 3, 1, 2
-                ),
-                "big_input_imgs": inputs_np["big_input_imgs"][:, i, :, :, :].transpose(
-                    0, 3, 1, 2
-                ),
-                "traffic_convention": inputs_np["traffic_convention"][:, i, :],
-                "lateral_control_params": inputs_np["lateral_control_params"][:, i, :],
+            partial_inputs = supercombo_tensors_at_idx(inputs_np, i)
+            inputs: SupercomboFullNumpyInputs = {
+                "big_input_imgs": partial_inputs["big_input_imgs"],
+                "input_imgs": partial_inputs["input_imgs"],
+                "traffic_convention": partial_inputs["traffic_convention"],
+                "lateral_control_params": partial_inputs["lateral_control_params"],
                 "desire": desire,
                 "prev_desired_curv": prev_desired_curv,
                 "features_buffer": features_buffer,
             }
+            gt = supercombo_tensors_at_idx(ground_truth, i)
             print(get_dict_shape(inputs))
             pred = model(inputs)
-            print("pred", pred)
+            parsed_pred = parse_supercombo_outputs(pred)
+            print("out sizes", get_dict_shape(parsed_pred))
+            print("\nground_truth sizes\n", get_dict_shape(ground_truth))
+            compare_pred = cast(
+                SupercomboPartialOutput,
+                {
+                    key: value
+                    for key, value in parsed_pred.items()
+                    if key != "hidden_state"
+                },
+            )
+            loss = total_loss(compare_pred, gt)  # type: ignore
+            # print("pred", pred)
+            print("loss", loss)
             return
 
 

@@ -24,8 +24,8 @@ from carla_experiments.common.types_common import (
     MetaTensors,
     PlanTensors,
     PoseTensors,
-    SupercomboGroundTruth,
-    SupercomboInput,
+    SupercomboPartialOutput,
+    SupercomboPartialTorchInput,
 )
 from carla_experiments.custom_logreader.custom_logreader import LogReader, ReadMode
 
@@ -111,7 +111,6 @@ class ModelV2OutputData:
     roadEdgeStds: List[float]  # length 2
     meta: MetaData
     laneLineStds: List[float]  # length 4
-    roadEdgeStds: List[float]  # length 2
     # modelExecutionTime: float
     # gpuExecutionTime: float
     leadsV3: List[LeadsV3]  # length 3
@@ -298,7 +297,7 @@ def model_outputs_rlog_to_tensors(
     modelv2: ModelV2OutputData,
     camera_odometry: CameraOdometryOutputData,
     device: str = "cuda",
-) -> SupercomboGroundTruth:
+) -> SupercomboPartialOutput:
     """Inputs a modelv2 object and returns the (1, 5992) size tensor
     including all the outputs from the model excluding the
     hidden state (which has size (1, 512)).
@@ -370,6 +369,9 @@ def model_outputs_rlog_to_tensors(
         device=device,
         dtype=torch.float32,
     ).reshape((len(modelv2.roadEdges), 33, 2))
+    road_edge_stds = torch.tensor(
+        modelv2.roadEdgeStds, device=device, dtype=torch.float32
+    )
     lead = torch.tensor(
         [[lead.x, lead.y, lead.v, lead.a] for lead in modelv2.leadsV3],
         device=device,
@@ -388,7 +390,7 @@ def model_outputs_rlog_to_tensors(
     )
     desire_pred = torch.tensor(
         modelv2.meta.desirePrediction, device=device, dtype=torch.float32
-    )
+    ).reshape((4, 8))
     meta: MetaTensors = {
         "engaged_prob": torch.tensor(
             modelv2.meta.engagedProb, device=device, dtype=torch.float32
@@ -473,6 +475,7 @@ def model_outputs_rlog_to_tensors(
         "lane_line_stds": lane_line_stds,
         "lane_line_probs": lane_line_probs,
         "road_edges": road_edges,
+        "road_edge_stds": road_edge_stds,
         "lead": lead,
         "lead_stds": lead_stds,
         "lead_prob": lead_prob,
@@ -511,7 +514,6 @@ def get_all_relevant_data_from_rlog(
         "modelV2": [],
         "cameraOdometry": [],
     }
-    print("rlog len", len(rlog))
     for log in rlog:
         # The desireState input to the model is
         # the previous desireState output of the model
@@ -529,7 +531,6 @@ def get_all_relevant_data_from_rlog(
             items["steerActuatorDelay"].append(float(log.carParams.steerActuatorDelay))
         elif log.which() == "driverMonitoringState":
             items["isRHD"].append(log.driverMonitoringState.isRHD)
-    print("item lengts", {key: len(item) for key, item in items.items()})
     # Create the RlogImportantData objects
     relevant_data: List[RlogImportantData] = []
     for i in range(padding_before, num_frames - padding_after):
@@ -686,7 +687,9 @@ class Comma3xDataset(Dataset):
             padding_after=100,
         )[self.segment_start_idx : self.segment_end_idx]
 
-    def __getitem__(self, idx: int) -> Tuple[SupercomboInput, SupercomboGroundTruth]:
+    def __getitem__(
+        self, idx: int
+    ) -> Tuple[SupercomboPartialTorchInput, SupercomboPartialOutput]:
         narrow_frames, wide_angle_frames = self._get_video_frames(idx)
         narrow_frames = concat_current_with_previous_frame(narrow_frames)
         wide_angle_frames = concat_current_with_previous_frame(wide_angle_frames)
@@ -699,15 +702,15 @@ class Comma3xDataset(Dataset):
         )
 
         # TODO: Maybe change to tuple instead of dict depending on model?
-        model_inputs: SupercomboInput = {
+        model_inputs: SupercomboPartialTorchInput = {
             # "desire": desires,
             "traffic_convention": traffic_convention,
             "lateral_control_params": lateral_control_params,
             # "prev_desired_curv": torch.zeros([100, 1]),  # TODO: Remove
             # "features_buffer": torch.zeros([99, 512]),  # TODO: Remove
             # In Openpilot you can choose whether to mainly use narrow or wide frames, here maining narrow
-            "input_imgs": narrow_frames,
-            "big_input_imgs": wide_angle_frames,
+            "input_imgs": narrow_frames.permute(0, 3, 1, 2),
+            "big_input_imgs": wide_angle_frames.permute(0, 3, 1, 2),
         }
 
         model_outputs_list = [
