@@ -78,7 +78,7 @@ def convert_fp16_to_fp32(path):
             if hasattr(a, "t"):
                 if a.t.data_type == 10:
                     attributeproto_fp16_to_fp32(a.t)
-    return model.SerializeToString()
+    return model
 
 
 def create_ort_session(path, fp16_to_fp32):
