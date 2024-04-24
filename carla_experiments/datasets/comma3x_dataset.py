@@ -1,16 +1,7 @@
 from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    List,
-    Literal,
-    NamedTuple,
-    Optional,
-    Tuple,
-    TypedDict,
-    TypeVar,
-)
+from typing import (Any, Callable, List, Literal, NamedTuple, Optional, Tuple,
+                    TypedDict, TypeVar)
 
 import cv2
 import numpy as np
@@ -20,14 +11,13 @@ from capnp.lib.capnp import _DynamicListReader, _DynamicStructReader
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import default_collate
 
-from carla_experiments.common.types_common import (
-    MetaTensors,
-    PlanTensors,
-    PoseTensors,
-    SupercomboPartialOutput,
-    SupercomboPartialTorchInput,
-)
-from carla_experiments.custom_logreader.custom_logreader import LogReader, ReadMode
+from carla_experiments.common.constants import SupercomboInputShapes
+from carla_experiments.common.types_common import (MetaTensors, PlanTensors,
+                                                   PoseTensors, SupercomboEnv,
+                                                   SupercomboPartialOutput,
+                                                   SupercomboPartialTorchInput)
+from carla_experiments.custom_logreader.custom_logreader import (LogReader,
+                                                                 ReadMode)
 
 
 @dataclass
@@ -138,8 +128,83 @@ class CameraOdometryOutputData:
 
 
 @dataclass
-class RlogImportantData:
+class CarState:
+    @dataclass
+    class CruiseState:
+        enabled: bool
+        speed: float
+        available: bool
+        speedOffset: float
+        standstill: bool
+        nonAdaptive: bool
+        speedCluster: float
+
+    @dataclass
+    class Event:
+        # examples of event names:
+        # doorOpen, seatbeltNotLatched, wrongGear, wrongCarMode, parkBrake, pcmDisable
+        name: str
+        enable: bool
+        noEntry: bool
+        warning: bool
+        userDisable: bool
+        softDisable: bool
+        immediateDisable: bool
+        preEnable: bool
+        permanent: bool
+        overrideLongitudinal: bool
+        overrideLateral: bool
+
     vEgo: float
+    gas: float
+    gasPressed: bool
+    brake: float
+    brakePressed: bool
+    steeringAngleDeg: float
+    steeringTorque: float
+    steeringPressed: bool
+    cruiseState: CruiseState
+    events: List[Event]
+    gearShifter: str
+    steeringRateDeg: float
+    aEgo: float
+    vEgoRaw: float
+    standstill: bool
+    brakeLightsDEPRECATED: bool
+    leftBlinker: bool
+    rightBlinker: bool
+    yawRate: float
+    genericToggle: bool
+    doorOpen: bool
+    seatbeltUnlatched: bool
+    canValid: bool
+    steeringTorqueEps: float
+    clutchPressed: bool
+    steeringRateLimitedDEPRECATED: bool
+    stockAeb: bool
+    stockFcw: bool
+    espDisabled: bool
+    leftBlindspot: bool
+    rightBlindspot: bool
+    steerFaultTemporary: bool
+    steerFaultPermanent: bool
+    steeringAngleOffsetDeg: float
+    brakeHoldActive: bool
+    parkingBrake: bool
+    canTimeout: bool
+    fuelGauge: float
+    accFaulted: bool
+    charging: bool
+    vEgoCluster: float
+    regenBraking: bool
+    engineRpm: float
+    carFaultedNonCritical: bool
+
+
+@dataclass
+class RlogImportantData:
+    carState: CarState
+    latActive: bool
     steerActuatorDelay: float
     isRHD: bool
     modelV2: ModelV2OutputData
@@ -293,6 +358,15 @@ def capnp_to_dataclass(item: _DynamicStructReader, cls: T) -> T:
 #     return
 
 
+def stack_xyz(
+    *args: List[float],
+    device: str = "cuda",
+    dtype=torch.float32,
+) -> torch.Tensor:
+    items = [torch.tensor(x, device=device, dtype=dtype) for x in args]
+    return torch.stack(items, dim=1)
+
+
 def model_outputs_rlog_to_tensors(
     modelv2: ModelV2OutputData,
     camera_odometry: CameraOdometryOutputData,
@@ -311,38 +385,48 @@ def model_outputs_rlog_to_tensors(
     """
     # TODO: HERE HERE
     # Plan
-    position = torch.tensor(
-        modelv2.position.x + modelv2.position.y + modelv2.position.z,
+    position = stack_xyz(
+        modelv2.position.x,
+        modelv2.position.y,
+        modelv2.position.z,
         device=device,
         dtype=torch.float32,
-    ).reshape((len(modelv2.position.x), 3))
-    position_stds = torch.tensor(
-        modelv2.position.xStd + modelv2.position.yStd + modelv2.position.zStd,
+    )
+    position_stds = stack_xyz(
+        modelv2.position.xStd,
+        modelv2.position.yStd,
+        modelv2.position.zStd,
         device=device,
         dtype=torch.float32,
-    ).reshape((len(modelv2.position.x), 3))
-    velocity = torch.tensor(
-        modelv2.velocity.x + modelv2.velocity.y + modelv2.velocity.z,
+    )
+    velocity = stack_xyz(
+        modelv2.velocity.x,
+        modelv2.velocity.y,
+        modelv2.velocity.z,
         device=device,
         dtype=torch.float32,
-    ).reshape((len(modelv2.velocity.x), 3))
-    acceleration = torch.tensor(
-        modelv2.acceleration.x + modelv2.acceleration.y + modelv2.acceleration.z,
+    )
+    acceleration = stack_xyz(
+        modelv2.acceleration.x,
+        modelv2.acceleration.y,
+        modelv2.acceleration.z,
         device=device,
         dtype=torch.float32,
-    ).reshape((len(modelv2.acceleration.x), 3))
-    t_from_current_euler = torch.tensor(
-        [modelv2.orientation.x + modelv2.orientation.y + modelv2.orientation.z],
+    )
+    t_from_current_euler = stack_xyz(
+        modelv2.orientation.x,
+        modelv2.orientation.y,
+        modelv2.orientation.z,
         device=device,
         dtype=torch.float32,
-    ).reshape(len(modelv2.orientation.x), 3)
-    orientation_rate = torch.tensor(
-        modelv2.orientationRate.x
-        + modelv2.orientationRate.y
-        + modelv2.orientationRate.z,
+    )
+    orientation_rate = stack_xyz(
+        modelv2.orientationRate.x,
+        modelv2.orientationRate.y,
+        modelv2.orientationRate.z,
         device=device,
         dtype=torch.float32,
-    ).reshape((len(modelv2.orientationRate.x), 3))
+    )
     plan: PlanTensors = {
         "position": position,
         "position_stds": position_stds,
@@ -353,35 +437,63 @@ def model_outputs_rlog_to_tensors(
     }
 
     # Lane lines
-    lane_lines = torch.tensor(
-        [lane_line.x + lane_line.y for lane_line in modelv2.laneLines],
-        device=device,
-        dtype=torch.float32,
-    ).reshape((len(modelv2.laneLines), 33, 2))
+    lane_lines = torch.stack(
+        [
+            stack_xyz(
+                lane_line.x,
+                lane_line.y,
+                device=device,
+                dtype=torch.float32,
+            )
+            for lane_line in modelv2.laneLines
+        ],
+    )
     lane_line_stds = torch.tensor(
         modelv2.laneLineStds, device=device, dtype=torch.float32
     )
     lane_line_probs = torch.tensor(
         modelv2.laneLineProbs, device=device, dtype=torch.float32
     )
-    road_edges = torch.tensor(
-        [road_edge.x + road_edge.y for road_edge in modelv2.roadEdges],
-        device=device,
-        dtype=torch.float32,
-    ).reshape((len(modelv2.roadEdges), 33, 2))
+    road_edges = torch.stack(
+        [
+            stack_xyz(
+                road_edge.x,
+                road_edge.y,
+                device=device,
+                dtype=torch.float32,
+            )
+            for road_edge in modelv2.roadEdges
+        ],
+    )
     road_edge_stds = torch.tensor(
         modelv2.roadEdgeStds, device=device, dtype=torch.float32
     )
-    lead = torch.tensor(
-        [[lead.x, lead.y, lead.v, lead.a] for lead in modelv2.leadsV3],
-        device=device,
-        dtype=torch.float32,
-    ).reshape((len(modelv2.leadsV3), 6, 4))
-    lead_stds = torch.tensor(
-        [[lead.xStd, lead.yStd, lead.vStd, lead.aStd] for lead in modelv2.leadsV3],
-        device=device,
-        dtype=torch.float32,
-    ).reshape((len(modelv2.leadsV3), 6, 4))
+    lead = torch.stack(
+        [
+            stack_xyz(
+                lead.x,
+                lead.y,
+                lead.v,
+                lead.a,
+                device=device,
+                dtype=torch.float32,
+            )
+            for lead in modelv2.leadsV3
+        ],
+    )
+    lead_stds = torch.stack(
+        [
+            stack_xyz(
+                lead.xStd,
+                lead.yStd,
+                lead.vStd,
+                lead.aStd,
+                device=device,
+                dtype=torch.float32,
+            )
+            for lead in modelv2.leadsV3
+        ],
+    )
     lead_prob = torch.tensor(
         [lead.prob for lead in modelv2.leadsV3], device=device, dtype=torch.float32
     )
@@ -508,11 +620,12 @@ def get_all_relevant_data_from_rlog(
     threshold = (padding_before + padding_after) // 2
     rlog = load_log(rlog_path, mode="rlog")
     items = {
-        "vEgo": [],
+        "carState": [],
         "steerActuatorDelay": [],
         "isRHD": [],
         "modelV2": [],
         "cameraOdometry": [],
+        "latActive": [],
     }
     for log in rlog:
         # The desireState input to the model is
@@ -526,16 +639,19 @@ def get_all_relevant_data_from_rlog(
             data = capnp_to_dataclass(log.cameraOdometry, CameraOdometryOutputData)
             items["cameraOdometry"].append(data)
         elif log.which() == "carState":
-            items["vEgo"].append(float(log.carState.vEgo))
+            car_state = capnp_to_dataclass(log.carState, CarState)
+            items["carState"].append(car_state)
         elif log.which() == "carParams":
             items["steerActuatorDelay"].append(float(log.carParams.steerActuatorDelay))
+        elif log.which() == "carControl":
+            items["latActive"].append(log.carControl.latActive)
         elif log.which() == "driverMonitoringState":
             items["isRHD"].append(log.driverMonitoringState.isRHD)
     # Create the RlogImportantData objects
     relevant_data: List[RlogImportantData] = []
     for i in range(padding_before, num_frames - padding_after):
         modelv2 = get_item_by_frequency(items["modelV2"], i, num_frames, threshold)
-        vEgo = get_item_by_frequency(items["vEgo"], i, num_frames, threshold)
+        car_state = get_item_by_frequency(items["carState"], i, num_frames, threshold)
         delay = get_item_by_frequency(
             items["steerActuatorDelay"], i, num_frames, threshold
         )
@@ -543,13 +659,15 @@ def get_all_relevant_data_from_rlog(
         cameraOdometry = get_item_by_frequency(
             items["cameraOdometry"], i, num_frames, threshold
         )
+        lat_active = get_item_by_frequency(items["latActive"], i, num_frames, threshold)
         relevant_data.append(
             RlogImportantData(
-                vEgo=vEgo,
+                carState=car_state,
                 steerActuatorDelay=delay,
                 isRHD=isRHD,
                 modelV2=modelv2,
                 cameraOdometry=cameraOdometry,
+                latActive=lat_active,
             )
         )
     return relevant_data
@@ -582,7 +700,7 @@ def get_lateral_control_params_tensor_from_rlog(
 ):
 
     v_ego = torch.tensor(
-        [log.vEgo for log in rlog_relevant], device=device, dtype=torch.float32
+        [log.carState.vEgo for log in rlog_relevant], device=device, dtype=torch.float32
     )
     steer_actuator_delay = torch.tensor(
         [log.steerActuatorDelay for log in rlog_relevant],
@@ -612,6 +730,13 @@ def get_traffic_conventions_tensor_from_rlog(
             for log in rlog_relevant
         ],
     )
+
+
+def get_desire_vector(desire: int) -> np.ndarray:
+    vec_desire = np.zeros(SupercomboInputShapes.DESIRES[1], dtype=np.float32)
+    if desire >= 0 and desire < SupercomboInputShapes.DESIRES[1]:
+        vec_desire[desire] = 1
+    return vec_desire
 
 
 class Comma3xDataset(Dataset):
@@ -689,7 +814,7 @@ class Comma3xDataset(Dataset):
 
     def __getitem__(
         self, idx: int
-    ) -> Tuple[SupercomboPartialTorchInput, SupercomboPartialOutput]:
+    ) -> Tuple[SupercomboPartialTorchInput, SupercomboPartialOutput, SupercomboEnv]:
         narrow_frames, wide_angle_frames = self._get_video_frames(idx)
         narrow_frames = concat_current_with_previous_frame(narrow_frames)
         wide_angle_frames = concat_current_with_previous_frame(wide_angle_frames)
@@ -721,7 +846,52 @@ class Comma3xDataset(Dataset):
         ]
         model_outputs_tensor_dict = default_collate(model_outputs_list)
 
-        return (model_inputs, model_outputs_tensor_dict)
+        supercombo_env: SupercomboEnv = {
+            "lateral_active": torch.tensor(
+                [log.latActive for log in rlog_relevant],
+                device=self.device,
+                dtype=torch.float32,
+            ),
+            "car_state": {
+                "v_ego": torch.tensor(
+                    [log.carState.vEgo for log in rlog_relevant],
+                    device=self.device,
+                    dtype=torch.bool,
+                ),
+                "steering_torque": torch.tensor(
+                    [log.carState.steeringTorque for log in rlog_relevant],
+                    device=self.device,
+                    dtype=torch.float32,
+                ),
+                "left_blindspot": torch.tensor(
+                    [log.carState.leftBlindspot for log in rlog_relevant],
+                    device=self.device,
+                    dtype=torch.bool,
+                ),
+                "right_blindspot": torch.tensor(
+                    [log.carState.rightBlindspot for log in rlog_relevant],
+                    device=self.device,
+                    dtype=torch.bool,
+                ),
+                "left_blinker": torch.tensor(
+                    [log.carState.leftBlinker for log in rlog_relevant],
+                    device=self.device,
+                    dtype=torch.bool,
+                ),
+                "right_blinker": torch.tensor(
+                    [log.carState.rightBlinker for log in rlog_relevant],
+                    device=self.device,
+                    dtype=torch.bool,
+                ),
+                "steering_pressed": torch.tensor(
+                    [log.carState.steeringPressed for log in rlog_relevant],
+                    device=self.device,
+                    dtype=torch.bool,
+                ),
+            },
+        }
+
+        return (model_inputs, model_outputs_tensor_dict, supercombo_env)
 
 
 def get_dict_shape(d: Any):
@@ -743,7 +913,7 @@ def main():
     print("Printing dataset length")
     print("Length of dataset:", len(dataset))
     print("Getting first dataset element")
-    model_input, gt = dataset[0]
+    model_input, gt, _ = dataset[0]
     print("First input\n", get_dict_shape(model_input))
     print("First output\n", get_dict_shape(gt))
 

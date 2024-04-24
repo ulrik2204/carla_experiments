@@ -1,4 +1,4 @@
-from typing import Generic, TypedDict, TypeVar, Union
+from typing import Generic, List, TypedDict, TypeVar, Union
 
 import numpy as np
 import torch
@@ -145,3 +145,19 @@ class FirstSliceSupercomboOutput(TypedDict):
         torch.Tensor
     )  # Shape([batch_size, 2]), but only the first 1 is used
     hidden_state: torch.Tensor  # Shape([batch_size, 512])
+
+
+class CarStatePartial(TypedDict):
+    v_ego: torch.Tensor  # Shape([batch_size, 1]), type: float32
+    steering_torque: torch.Tensor  # Shape([batch_size, 1]), type: float32
+
+    left_blinker: torch.Tensor  # Shape([batch_size, 1]), type: bool
+    right_blinker: torch.Tensor  # Shape([batch_size, 1]), type: bool
+    steering_pressed: torch.Tensor  # Shape([batch_size, 1]), type: bool
+    left_blindspot: torch.Tensor  # Shape([batch_size, 1]), type: bool
+    right_blindspot: torch.Tensor  # Shape([batch_size, 1]), type: bool
+
+
+class SupercomboEnv(TypedDict):
+    car_state: CarStatePartial
+    lateral_active: torch.Tensor  # Shape([batch_size, 1]), type: bool

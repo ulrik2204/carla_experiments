@@ -133,10 +133,10 @@ def slice_tensor_to_dict(
         if not isinstance(tensor, torch.Tensor)
         else tensor
     )
-    for k, shape in slices.items():
+    for k, slice in slices.items():
         if k not in output_type.__annotations__:
             raise ValueError(f"Key {k} not in {output_type.__annotations__}")
-        result[k] = tensor[:, shape]  # type: ignore
+        result[k] = tensor[..., slice]  # type: ignore
     return result  # type: ignore
 
 
@@ -152,7 +152,6 @@ def parse_supercombo_outputs(
     outputs = (
         torch.tensor(outputs) if not isinstance(outputs, torch.Tensor) else outputs
     )
-    # TODO: Can't just put 0 here, that removed the batch size!
     device = str(outputs.device)
     outputs_sliced = slice_tensor_to_dict(
         outputs,
@@ -195,10 +194,10 @@ def parse_supercombo_outputs(
         meta, SUPERCOMBO_META_SLICES, output_type=MetaSliced
     )
     plan_sliced = slice_tensor_to_dict(
-        plan[:, 0], SUPERCOMBO_PLAN_SLICES, output_type=PlanSliced
+        plan, SUPERCOMBO_PLAN_SLICES, output_type=PlanSliced
     )
     plan_stds_sliced = slice_tensor_to_dict(
-        plan_stds[:, 0], SUPERCOMBO_PLAN_SLICES, output_type=PlanSliced
+        plan_stds, SUPERCOMBO_PLAN_SLICES, output_type=PlanSliced
     )
 
     plan_dict: PlanTensors = {
@@ -262,7 +261,7 @@ def total_loss(pred: dict, ground_truth: dict) -> float:
     diffs = []
     for key, value in pred.items():
         if isinstance(value, torch.Tensor):
-            diff = float(torch.sum(value - ground_truth[key]))
+            diff = float(torch.sum(torch.abs(value - ground_truth[key])))
             diffs.append(diff)
         if isinstance(value, dict):
             diff = float(total_loss(value, ground_truth[key]))

@@ -282,3 +282,36 @@ def ecef_frd_quaternion_to_carla_rotation(
     y = -np.degrees(enu_euler[1] - np.pi)
     z = -np.degrees(enu_euler[2] - np.pi)
     return carla.Rotation(x, y, z)
+
+
+def euler2quat(eulers):
+    eulers = np.array(eulers)
+    if len(eulers.shape) > 1:
+        output_shape = (-1, 4)
+    else:
+        output_shape = (4,)
+    eulers = np.atleast_2d(eulers)
+    gamma, theta, psi = eulers[:, 0], eulers[:, 1], eulers[:, 2]
+
+    q0 = np.cos(gamma / 2) * np.cos(theta / 2) * np.cos(psi / 2) + np.sin(
+        gamma / 2
+    ) * np.sin(theta / 2) * np.sin(psi / 2)
+    q1 = np.sin(gamma / 2) * np.cos(theta / 2) * np.cos(psi / 2) - np.cos(
+        gamma / 2
+    ) * np.sin(theta / 2) * np.sin(psi / 2)
+    q2 = np.cos(gamma / 2) * np.sin(theta / 2) * np.cos(psi / 2) + np.sin(
+        gamma / 2
+    ) * np.cos(theta / 2) * np.sin(psi / 2)
+    q3 = np.cos(gamma / 2) * np.cos(theta / 2) * np.sin(psi / 2) - np.sin(
+        gamma / 2
+    ) * np.sin(theta / 2) * np.cos(psi / 2)
+
+    quats = np.array([q0, q1, q2, q3]).T
+    for i in np.arange(len(quats)):
+        if quats[i, 0] < 0:
+            quats[i] = -quats[i]
+    return quats.reshape(output_shape)
+
+
+def euler2rot(eulers):
+    return quat2rot(euler2quat(eulers))
