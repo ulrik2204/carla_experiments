@@ -1,5 +1,4 @@
-from enum import Enum
-from typing import Any, final
+from typing import Any
 
 
 class _ConstantMeta(type):

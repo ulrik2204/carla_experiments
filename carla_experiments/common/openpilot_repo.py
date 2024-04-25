@@ -1,5 +1,4 @@
 from pathlib import Path
-from sys import version
 from typing import Literal, Optional, TypedDict, Union
 
 import requests

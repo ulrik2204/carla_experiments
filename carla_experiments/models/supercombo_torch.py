@@ -3,7 +3,6 @@ from typing import cast
 
 import torch
 from onnx2torch import convert
-from onnx2torch.node_converters import add_converter
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 

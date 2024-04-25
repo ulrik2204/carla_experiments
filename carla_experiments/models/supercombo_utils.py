@@ -272,13 +272,21 @@ def total_loss(pred: dict, ground_truth: dict) -> float:
 TTensorDict = TypeVar("TTensorDict", bound=Mapping)
 
 
-def supercombo_tensors_at_idx(tensors_dict: TTensorDict, idx) -> TTensorDict:
+def supercombo_tensors_at_idx(
+    tensors_dict: TTensorDict, idx: int, batched=True
+) -> TTensorDict:
     dic = {}
     for key, item in tensors_dict.items():
         if isinstance(item, torch.Tensor) or isinstance(item, np.ndarray):
-            dic[key] = item[:, idx]
+            if batched:
+                dic[key] = item[:, idx]
+            else:
+                dic[key] = item[idx]
+
+        elif isinstance(item, list):
+            dic[key] = item[idx]
         elif isinstance(item, dict):
-            dic[key] = supercombo_tensors_at_idx(item, idx)
+            dic[key] = supercombo_tensors_at_idx(item, idx, batched=batched)
         else:
             raise ValueError("Not supported type: " + str(type(item)))
     return cast(TTensorDict, dic)

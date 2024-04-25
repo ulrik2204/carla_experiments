@@ -1,209 +1,59 @@
 from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import (Any, Callable, List, Literal, NamedTuple, Optional, Tuple,
-                    TypedDict, TypeVar)
+from typing import (
+    Any,
+    Callable,
+    List,
+    Literal,
+    NamedTuple,
+    Optional,
+    Tuple,
+    TypedDict,
+    TypeVar,
+)
 
 import cv2
 import numpy as np
 import torch
 import torchvision.transforms as transforms
 from capnp.lib.capnp import _DynamicListReader, _DynamicStructReader
+from matplotlib import pyplot as plt
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import default_collate
 
 from carla_experiments.common.constants import SupercomboInputShapes
-from carla_experiments.common.types_common import (MetaTensors, PlanTensors,
-                                                   PoseTensors, SupercomboEnv,
-                                                   SupercomboPartialOutput,
-                                                   SupercomboPartialTorchInput)
-from carla_experiments.custom_logreader.custom_logreader import (LogReader,
-                                                                 ReadMode)
-
-
-@dataclass
-class Position:
-    x: List[float]  # length 33
-    y: List[float]  # length 33
-    z: List[float]  # length 33
-    t: List[float]  # length 33
-    xStd: List[float]  # length 33
-    yStd: List[float]  # length 33
-    zStd: List[float]  # length 33
-
-
-@dataclass
-class XYZT:
-    x: List[float]  # length 33
-    y: List[float]  # length 33
-    z: List[float]  # length 33
-    t: List[float]  # length 33
-
-
-@dataclass
-class DisengagePredictions:
-    t: List[float]  # length 5
-    brakeDisengageProbs: List[float]  # length 5
-    gasDisengageProbs: List[float]  # length 5
-    steerOverrideProbs: List[float]  # length 5
-    brake3MetersPerSecondSquaredProbs: List[float]  # length 5
-    brake4MetersPerSecondSquaredProbs: List[float]  # length 5
-    brake5MetersPerSecondSquaredProbs: List[float]  # length 5
-
-
-@dataclass
-class MetaData:
-    engagedProb: float
-    desirePrediction: List[float]  # length 32
-    desireState: List[float]  # length 8
-    disengagePredictions: DisengagePredictions
-    hardBrakePredicted: bool
-    # laneChangeState: str
-    # laneChangeDirection: str
-
-
-@dataclass
-class LeadsV3:
-    prob: float
-    probTime: float
-    t: List[float]  # length 6
-    x: List[float]  # length 6
-    y: List[float]  # length 6
-    v: List[float]  # length 6
-    a: List[float]  # length 6
-    xStd: List[float]  # length 6
-    yStd: List[float]  # length 6
-    vStd: List[float]  # length 6
-    aStd: List[float]  # length 6
-
-
-@dataclass
-class TemporalPose:
-    trans: List[float]  # length 3
-    rot: List[float]  # length 3
-    transStd: List[float]  # length 3
-    rotStd: List[float]  # length 3
-
-
-@dataclass
-class Action:
-    desiredCurvature: float
-
-
-@dataclass
-class ModelV2OutputData:
-    position: Position
-    orientation: XYZT
-    velocity: XYZT
-    orientationRate: XYZT
-    laneLines: List[XYZT]  # length 4
-    laneLineProbs: List[float]
-    roadEdges: List[XYZT]  # length 2
-    roadEdgeStds: List[float]  # length 2
-    meta: MetaData
-    laneLineStds: List[float]  # length 4
-    # modelExecutionTime: float
-    # gpuExecutionTime: float
-    leadsV3: List[LeadsV3]  # length 3
-    acceleration: XYZT
-    # frameIdExtra: int
-    temporalPose: TemporalPose
-    # navEnabled: bool
-    confidence: str
-    # locationMonoTime: int
-    action: Action
-
-
-@dataclass
-class CameraOdometryOutputData:
-    trans: List[float]
-    rot: List[float]
-    transStd: List[float]
-    rotStd: List[float]
-    frameId: int
-    timestampEof: int
-    wideFromDeviceEuler: List[float]
-    wideFromDeviceEulerStd: List[float]
-    roadTransformTrans: List[float]
-    roadTransformTransStd: List[float]
-
-
-@dataclass
-class CarState:
-    @dataclass
-    class CruiseState:
-        enabled: bool
-        speed: float
-        available: bool
-        speedOffset: float
-        standstill: bool
-        nonAdaptive: bool
-        speedCluster: float
-
-    @dataclass
-    class Event:
-        # examples of event names:
-        # doorOpen, seatbeltNotLatched, wrongGear, wrongCarMode, parkBrake, pcmDisable
-        name: str
-        enable: bool
-        noEntry: bool
-        warning: bool
-        userDisable: bool
-        softDisable: bool
-        immediateDisable: bool
-        preEnable: bool
-        permanent: bool
-        overrideLongitudinal: bool
-        overrideLateral: bool
-
-    vEgo: float
-    gas: float
-    gasPressed: bool
-    brake: float
-    brakePressed: bool
-    steeringAngleDeg: float
-    steeringTorque: float
-    steeringPressed: bool
-    cruiseState: CruiseState
-    events: List[Event]
-    gearShifter: str
-    steeringRateDeg: float
-    aEgo: float
-    vEgoRaw: float
-    standstill: bool
-    brakeLightsDEPRECATED: bool
-    leftBlinker: bool
-    rightBlinker: bool
-    yawRate: float
-    genericToggle: bool
-    doorOpen: bool
-    seatbeltUnlatched: bool
-    canValid: bool
-    steeringTorqueEps: float
-    clutchPressed: bool
-    steeringRateLimitedDEPRECATED: bool
-    stockAeb: bool
-    stockFcw: bool
-    espDisabled: bool
-    leftBlindspot: bool
-    rightBlindspot: bool
-    steerFaultTemporary: bool
-    steerFaultPermanent: bool
-    steeringAngleOffsetDeg: float
-    brakeHoldActive: bool
-    parkingBrake: bool
-    canTimeout: bool
-    fuelGauge: float
-    accFaulted: bool
-    charging: bool
-    vEgoCluster: float
-    regenBraking: bool
-    engineRpm: float
-    carFaultedNonCritical: bool
+from carla_experiments.common.rlog_types import (
+    XYZT,
+    CameraOdometryOutputData,
+    CarState,
+    DeviceState,
+    LiveCalibration,
+    ModelV2OutputData,
+    Position,
+    RoadCameraState,
+)
+from carla_experiments.common.types_common import (
+    MetaTensors,
+    PlanTensors,
+    PoseTensors,
+    SupercomboEnv,
+    SupercomboEnvIndexed,
+    SupercomboPartialOutput,
+    SupercomboPartialTorchInput,
+)
+from carla_experiments.common.utils_openpilot import (
+    rgb_to_6_channel_yuv,
+    yuv_6_channel_to_rgb,
+)
+from carla_experiments.custom_logreader.custom_logreader import LogReader, ReadMode
 
 
 @dataclass
 class RlogImportantData:
     carState: CarState
+    liveCalibration: LiveCalibration
+    deviceState: DeviceState
+    roadCameraState: RoadCameraState
     latActive: bool
     steerActuatorDelay: float
     isRHD: bool
@@ -214,14 +64,15 @@ class RlogImportantData:
 def load_video(
     path: str, frame_shape: tuple = (512, 256), device: str = "cuda"
 ) -> List[torch.Tensor]:
-    """Loads a video from a file and returns it as a tensor.
+    """Loads a video from a file and returns it as a tensor in RGB.
 
     Args:
         path (str): The path to the video file.
         frame_shape (tuple): The shape of the frames to reshape (width, height)
 
     Returns:
-        List[np.ndarray]: A list of frames with size (height, width, 3) in YUV format.
+        List[torch.Tensor]: A list of uint8 tensor frames with size (height, width, 3)
+            in RGB format.
     """
     # TODO: use FrameReader instead
     cap = cv2.VideoCapture(path)
@@ -231,56 +82,13 @@ def load_video(
         if not ret:
             break
         # convert to PIL Image (converting from BGR to YUV)
-        yuv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)
+        yuv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         yuv_image = cv2.resize(yuv_image, frame_shape)
-        tens = torch.tensor(yuv_image, device=device, dtype=torch.float32)
+        tens = torch.tensor(yuv_image, device=device, dtype=torch.uint8)
         frames.append(tens)
         # Process the frame
     cap.release()
     return frames
-
-
-def preprocess_yuv_video_frames(frames: torch.Tensor) -> torch.Tensor:
-    """Preprocess a tensor of video frames in YUV format.
-
-    Args:
-        frames (torch.Tensor): A tensor of shape (num_frames, height, width, 3)
-            where the last dimension is the YUV channels.
-
-    Returns:
-        torch.Tensor: A tensor of shape (num_frames, height//2, width//2, 6)
-    """
-    num_frames, height, width, _ = frames.shape
-
-    # Prepare output tensor
-    output = torch.zeros(
-        (num_frames, height // 2, width // 2, 6),
-        dtype=frames.dtype,
-        device=frames.device,
-    )
-
-    # Process each frame
-    for i in range(num_frames):
-        # Split Y, U, V channels
-        Y = frames[i, :, :, 0]
-        U = frames[i, :, :, 1]
-        V = frames[i, :, :, 2]
-
-        # Channel 0: Y[::2, ::2]
-        output[i, :, :, 0] = Y[::2, ::2]
-        # Channel 1: Y[::2, 1::2]
-        output[i, :, :, 1] = Y[::2, 1::2]
-        # Channel 2: Y[1::2, ::2]
-        output[i, :, :, 2] = Y[1::2, ::2]
-        # Channel 3: Y[1::2, 1::2]
-        output[i, :, :, 3] = Y[1::2, 1::2]
-
-        # Channel 4: U - at half resolution
-        output[i, :, :, 4] = U[::2, ::2]
-        # Channel 5: V - at half resolution
-        output[i, :, :, 5] = V[::2, ::2]
-
-    return output
 
 
 def load_log(path: str, mode: Literal["rlog", "qlog"]) -> List[_DynamicStructReader]:
@@ -626,6 +434,9 @@ def get_all_relevant_data_from_rlog(
         "modelV2": [],
         "cameraOdometry": [],
         "latActive": [],
+        "liveCalibration": [],
+        "deviceState": [],
+        "roadCameraState": [],
     }
     for log in rlog:
         # The desireState input to the model is
@@ -647,6 +458,16 @@ def get_all_relevant_data_from_rlog(
             items["latActive"].append(log.carControl.latActive)
         elif log.which() == "driverMonitoringState":
             items["isRHD"].append(log.driverMonitoringState.isRHD)
+        elif log.which() == "liveCalibration":
+            data = capnp_to_dataclass(log.liveCalibration, LiveCalibration)
+            items["liveCalibration"].append(data)
+        elif log.which() == "deviceState":
+            data = capnp_to_dataclass(log.deviceState, DeviceState)
+            items["deviceState"].append(data)
+        elif log.which() == "roadCameraState":
+            data = capnp_to_dataclass(log.roadCameraState, RoadCameraState)
+            items["roadCameraState"].append(data)
+
     # Create the RlogImportantData objects
     relevant_data: List[RlogImportantData] = []
     for i in range(padding_before, num_frames - padding_after):
@@ -660,6 +481,15 @@ def get_all_relevant_data_from_rlog(
             items["cameraOdometry"], i, num_frames, threshold
         )
         lat_active = get_item_by_frequency(items["latActive"], i, num_frames, threshold)
+        live_calibration = get_item_by_frequency(
+            items["liveCalibration"], i, num_frames, threshold
+        )
+        device_state = get_item_by_frequency(
+            items["deviceState"], i, num_frames, threshold
+        )
+        road_camera_state = get_item_by_frequency(
+            items["roadCameraState"], i, num_frames, threshold
+        )
         relevant_data.append(
             RlogImportantData(
                 carState=car_state,
@@ -668,6 +498,9 @@ def get_all_relevant_data_from_rlog(
                 modelV2=modelv2,
                 cameraOdometry=cameraOdometry,
                 latActive=lat_active,
+                liveCalibration=live_calibration,
+                deviceState=device_state,
+                roadCameraState=road_camera_state,
             )
         )
     return relevant_data
@@ -746,20 +579,37 @@ class Comma3xDataset(Dataset):
         segment_start_idx: int = 0,
         segment_end_idx: int = 1200,
         device: str = "cuda",
-        image_transforms: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+        narrow_image_transforms: Optional[
+            Callable[[torch.Tensor, SupercomboEnv], torch.Tensor]
+        ] = None,
+        wide_image_transforms: Optional[
+            Callable[[torch.Tensor, SupercomboEnv], torch.Tensor]
+        ] = None,
     ) -> None:
         """Constructor for the Comma3xDataset class.
 
-
         Args:
-            folder (str): The path to the folder containing each 1 min segment as folders.
+            folder (str): The folder to the folder of comma3x segments.
+                Each segment should contain at least the files: ecamera.hevc, fcamera.hevc, rlog
+            segment_start_idx (int, optional): The camera frame index each segment returned should start at.
+                Defaults to 0.
+            segment_end_idx (int, optional): The camera frame index each segment returned should end at.
+                Defaults to 1200.
+            device (str, optional): torch device. Defaults to "cuda".
+            narrow_image_transforms (Optional[ Callable[[torch.Tensor], torch.Tensor] ], optional):
+                Transforms taking in a tensor of [num_imgs, 256, 512] as RGB image and returns
+                the transformed RGB image. Defaults to None.
+            wide_image_transforms (Optional[Callable[[torch.Tensor], torch.Tensor]], optional):
+                Transforms taking in a tensor of [num_imgs, 256, 512] as RGB image and returns
+                the transformed RGB image. Defaults to None.
         """
         self.device = device
         self.path = Path(folder)
         self.segment_paths = [item for item in self.path.iterdir() if item.is_dir()]
         self.segment_start_idx = segment_start_idx
         self.segment_end_idx = segment_end_idx
-        self.image_transforms = image_transforms
+        self.narrow_image_transforms = narrow_image_transforms
+        self.wide_image_transforms = wide_image_transforms
         # Assume the videos include the same amount of frames
         # self.num_frames_per_video = len(
         #     load_video((self.segment_paths[0] / "ecamera.hevc").as_posix())
@@ -768,38 +618,39 @@ class Comma3xDataset(Dataset):
 
         # self.current_rlog: Optional[CurrentRlog] = None
 
-    def _get_video_frames(self, idx: int):
+    def _get_video_frames(self, idx: int, senv: SupercomboEnv):
         # TODO: Preprocess images and cat the current image with the previous image
         segment_path = self.segment_paths[idx]
         ecamera_path = segment_path / "ecamera.hevc"
         fcamera_path = segment_path / "fcamera.hevc"
         # qcamera_path = device_path / "qcamera.ts" # not using
         # qlog_path = segment / "qlog" # only using rlog
-        narrow_frames = preprocess_yuv_video_frames(
-            torch.stack(
-                load_video(fcamera_path.as_posix(), device=self.device)[
-                    self.segment_start_idx : self.segment_end_idx
-                ]
-            )
-        ).to(self.device)
-        final_narrow_frames = (
-            self.image_transforms(narrow_frames)
-            if self.image_transforms is not None
-            else narrow_frames
+        narrow_frames_rgb = torch.stack(
+            load_video(fcamera_path.as_posix(), device=self.device)[
+                self.segment_start_idx : self.segment_end_idx
+            ]
         )
-        wide_angle_frames = preprocess_yuv_video_frames(
-            torch.stack(
-                load_video(ecamera_path.as_posix(), device=self.device)[
-                    self.segment_start_idx : self.segment_end_idx
-                ]
-            )
-        ).to(self.device)
-        final_wide_angle_frames = (
-            self.image_transforms(wide_angle_frames)
-            if self.image_transforms is not None
+        transformed_narrow_frames = (
+            self.narrow_image_transforms(narrow_frames_rgb, senv)
+            if self.narrow_image_transforms is not None
+            else narrow_frames_rgb
+        )
+        wide_angle_frames = torch.stack(
+            load_video(ecamera_path.as_posix(), device=self.device)[
+                self.segment_start_idx : self.segment_end_idx
+            ]
+        )
+        transformed_wide_angle_frames = (
+            self.wide_image_transforms(wide_angle_frames, senv)
+            if self.wide_image_transforms is not None
             else wide_angle_frames
         )
-        return (final_narrow_frames, final_wide_angle_frames)
+        final_narrow_frames = rgb_to_6_channel_yuv(transformed_narrow_frames)
+        final_wide_angle_frames = rgb_to_6_channel_yuv(transformed_wide_angle_frames)
+        return (
+            final_narrow_frames.to(dtype=torch.float32),
+            final_wide_angle_frames.to(dtype=torch.float32),
+        )
 
     def __len__(self) -> int:
         return len(self.segment_paths)
@@ -815,37 +666,7 @@ class Comma3xDataset(Dataset):
     def __getitem__(
         self, idx: int
     ) -> Tuple[SupercomboPartialTorchInput, SupercomboPartialOutput, SupercomboEnv]:
-        narrow_frames, wide_angle_frames = self._get_video_frames(idx)
-        narrow_frames = concat_current_with_previous_frame(narrow_frames)
-        wide_angle_frames = concat_current_with_previous_frame(wide_angle_frames)
         rlog_relevant = self._get_relevant_data_from_rlog(idx)
-        traffic_convention = get_traffic_conventions_tensor_from_rlog(
-            rlog_relevant, device=self.device
-        )
-        lateral_control_params = get_lateral_control_params_tensor_from_rlog(
-            rlog_relevant, device=self.device
-        )
-
-        # TODO: Maybe change to tuple instead of dict depending on model?
-        model_inputs: SupercomboPartialTorchInput = {
-            # "desire": desires,
-            "traffic_convention": traffic_convention,
-            "lateral_control_params": lateral_control_params,
-            # "prev_desired_curv": torch.zeros([100, 1]),  # TODO: Remove
-            # "features_buffer": torch.zeros([99, 512]),  # TODO: Remove
-            # In Openpilot you can choose whether to mainly use narrow or wide frames, here maining narrow
-            "input_imgs": narrow_frames.permute(0, 3, 1, 2),
-            "big_input_imgs": wide_angle_frames.permute(0, 3, 1, 2),
-        }
-
-        model_outputs_list = [
-            model_outputs_rlog_to_tensors(
-                log.modelV2, log.cameraOdometry, device=self.device
-            )
-            for log in rlog_relevant
-        ]
-        model_outputs_tensor_dict = default_collate(model_outputs_list)
-
         supercombo_env: SupercomboEnv = {
             "lateral_active": torch.tensor(
                 [log.latActive for log in rlog_relevant],
@@ -889,7 +710,43 @@ class Comma3xDataset(Dataset):
                     dtype=torch.bool,
                 ),
             },
+            "rpy_calib": torch.tensor(
+                [log.liveCalibration.rpyCalib for log in rlog_relevant],
+                device=self.device,
+                dtype=torch.float32,
+            ),
+            "device_type": [str(log.deviceState.deviceType) for log in rlog_relevant],
+            "sensor": [str(log.roadCameraState.sensor) for log in rlog_relevant],
         }
+        narrow_frames, wide_angle_frames = self._get_video_frames(idx, supercombo_env)
+        narrow_frames = concat_current_with_previous_frame(narrow_frames)
+        wide_angle_frames = concat_current_with_previous_frame(wide_angle_frames)
+        traffic_convention = get_traffic_conventions_tensor_from_rlog(
+            rlog_relevant, device=self.device
+        )
+        lateral_control_params = get_lateral_control_params_tensor_from_rlog(
+            rlog_relevant, device=self.device
+        )
+
+        # TODO: Maybe change to tuple instead of dict depending on model?
+        model_inputs: SupercomboPartialTorchInput = {
+            # "desire": desires,
+            "traffic_convention": traffic_convention,
+            "lateral_control_params": lateral_control_params,
+            # "prev_desired_curv": torch.zeros([100, 1]),  # TODO: Remove
+            # "features_buffer": torch.zeros([99, 512]),  # TODO: Remove
+            # In Openpilot you can choose whether to mainly use narrow or wide frames, here maining narrow
+            "input_imgs": narrow_frames.permute(0, 3, 1, 2),
+            "big_input_imgs": wide_angle_frames.permute(0, 3, 1, 2),
+        }
+
+        model_outputs_list = [
+            model_outputs_rlog_to_tensors(
+                log.modelV2, log.cameraOdometry, device=self.device
+            )
+            for log in rlog_relevant
+        ]
+        model_outputs_tensor_dict = default_collate(model_outputs_list)
 
         return (model_inputs, model_outputs_tensor_dict, supercombo_env)
 
@@ -897,17 +754,17 @@ class Comma3xDataset(Dataset):
 def get_dict_shape(d: Any):
     if type(d) is torch.Tensor or type(d) is np.ndarray:
         return d.shape
+    if type(d) is list:
+        return "List of length " + str(len(d))
     return {key: get_dict_shape(value) for key, value in d.items()}
 
 
 def main():
     print("Initializing the dataset")
-    trans = transforms.Compose([transforms.Normalize(mean=[0.5], std=[0.5])])
     dataset = Comma3xDataset(
         folder="/home/ulrikro/datasets/CommaAI/2024_02_28_Orkdal",
         segment_start_idx=300,
         segment_end_idx=500,
-        image_transforms=trans,
         device="cpu",
     )
     print("Printing dataset length")
