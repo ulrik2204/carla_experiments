@@ -4,11 +4,9 @@ from functools import partial
 from pathlib import Path
 from typing import Literal, cast
 
-import cv2
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
-from PIL import Image
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -16,7 +14,6 @@ from carla_experiments.common.constants import SupercomboInputShapes
 from carla_experiments.common.position_and_rotation import euler2rot
 from carla_experiments.common.types_common import (
     SupercomboEnv,
-    SupercomboEnvIndexed,
     SupercomboFullNumpyInputs,
     SupercomboPartialNumpyInput,
     SupercomboPartialOutput,
@@ -25,8 +22,6 @@ from carla_experiments.common.utils_op_deepdive import calibrate_image
 from carla_experiments.common.utils_openpilot import (
     DEVICE_CAMERAS,
     DeviceCameraConfig,
-    get_warp_matrix,
-    warp_image,
     yuv_6_channel_to_rgb,
 )
 from carla_experiments.common.visualization import visualize_trajectory
