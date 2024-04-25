@@ -89,7 +89,7 @@ class PoseTensors(TypedDict):
     rotStd: torch.Tensor  # Shape([num_imgs, 3])
 
 
-class SupercomboPartialOutput(TypedDict):
+class SupercomboOutputLogged(TypedDict):
     plan: PlanTensors
     lane_lines: torch.Tensor  # Shape([num_imgs, 4, 33, 2])
     lane_line_probs: torch.Tensor  # Shape([num_imgs, 8])
@@ -113,7 +113,41 @@ class SupercomboPartialOutput(TypedDict):
     desired_curvature: torch.Tensor  # Shape([num_imgs, 1]), only using the first one
 
 
-class SupercomboFullOutput(SupercomboPartialOutput):
+class PlanFull(TypedDict):
+    position: torch.Tensor  # Shape([num_imgs, 33, 3])
+    position_stds: torch.Tensor  # Shape([num_imgs, 33, 3])
+    velocity: torch.Tensor  # Shape([num_imgs, 33, 3])
+    velocity_stds: torch.Tensor  # Shape([num_imgs, 33, 3])
+    acceleration: torch.Tensor  # Shape([num_imgs, 33, 3])
+    acceleration_stds: torch.Tensor  # Shape([num_imgs, 33, 3])
+    t_from_current_euler: torch.Tensor  # Shape([num_imgs, 33, 3]), aka orientation
+    t_from_current_euler_stds: torch.Tensor  # Shape([num_imgs, 33, 3])
+    orientation_rate: torch.Tensor  # Shape([num_imgs, 33, 3])
+    orientation_rate_stds: torch.Tensor  # Shape([num_imgs, 33, 3])
+
+
+class SupercomboFullOutput(TypedDict):
+    plan: PlanFull
+    lane_lines: torch.Tensor  # Shape([num_imgs, 4, 33, 2])
+    lane_line_probs: torch.Tensor  # Shape([num_imgs, 8])
+    lane_line_stds: torch.Tensor  # Shape([num_imgs, 4])
+    road_edges: torch.Tensor  # Shape([num_imgs, 2, 33, 2])
+    road_edge_stds: torch.Tensor  # Shape([num_imgs, 2])
+    lead: torch.Tensor  # Shape([num_imgs, 3, 6, 4])
+    lead_stds: torch.Tensor  # Shape([num_imgs, 3, 6, 4])
+    lead_prob: torch.Tensor  # Shape([num_imgs, 3])
+    desire_state: torch.Tensor  # Shape([num_imgs, 8])
+    meta: MetaTensors
+    desire_pred: torch.Tensor  # Shape([num_imgs, 4, 8])
+    pose: PoseTensors
+    wide_from_device_euler: torch.Tensor  # Shape([num_imgs, 3]), only using the first 3
+    wide_from_device_euler_std: torch.Tensor  # Shape([num_imgs, 3]) last 3
+    sim_pose: PoseTensors
+    road_transform: (
+        torch.Tensor
+    )  # Shape([num_imgs, 3]), comes from road_transofrm (of 6 first 3)
+    road_transform_std: torch.Tensor  # Shape([num_imgs, 3]) last 3
+    desired_curvature: torch.Tensor  # Shape([num_imgs, 1]), only using the first one
     hidden_state: torch.Tensor  # Shape([num_imgs, 512]
 
 

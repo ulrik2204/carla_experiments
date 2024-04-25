@@ -15,8 +15,8 @@ from carla_experiments.common.position_and_rotation import euler2rot
 from carla_experiments.common.types_common import (
     SupercomboEnv,
     SupercomboFullNumpyInputs,
+    SupercomboOutputLogged,
     SupercomboPartialNumpyInput,
-    SupercomboPartialOutput,
 )
 from carla_experiments.common.utils_op_deepdive import calibrate_image
 from carla_experiments.common.utils_openpilot import (
@@ -195,16 +195,10 @@ def main_onnx():
             # torch.save(inputs, "inputs.pt")
             # torch.save(parsed_pred, "output.pt")
             # torch.save(gt, "ground_truth.pt")
-            compare_pred = cast(
-                SupercomboPartialOutput,
-                {
-                    key: value
-                    for key, value in parsed_pred.items()
-                    if key != "hidden_state"
-                },
-            )
-            loss = total_loss(compare_pred, gt)  # type: ignore
+            loss = total_loss(parsed_pred, gt)  # type: ignore
             # print("loss", loss)
+            # print("shapes\n", get_dict_shape(parsed_pred))
+            # return
 
             prev_input_img = (
                 yuv_6_channel_to_rgb(
@@ -217,8 +211,6 @@ def main_onnx():
                 .cpu()
                 .numpy()
             )
-            print("prev_input_img", prev_input_img.shape)
-            plt.imsave("prev_input_img.png", prev_input_img)
             current_input_img = (
                 yuv_6_channel_to_rgb(
                     torch.tensor(partial_inputs["input_imgs"][:, 6:]).permute(
@@ -233,7 +225,7 @@ def main_onnx():
             visualize_trajectory(
                 prev_input_img,
                 current_input_img,
-                compare_pred,
+                parsed_pred,
                 gt,
                 loss,
                 (save_path / f"pred_{i_batch}_{i}.png").as_posix(),

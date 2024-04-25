@@ -38,7 +38,7 @@ from carla_experiments.common.types_common import (
     PoseTensors,
     SupercomboEnv,
     SupercomboEnvIndexed,
-    SupercomboPartialOutput,
+    SupercomboOutputLogged,
     SupercomboPartialTorchInput,
 )
 from carla_experiments.common.utils_openpilot import (
@@ -179,7 +179,7 @@ def model_outputs_rlog_to_tensors(
     modelv2: ModelV2OutputData,
     camera_odometry: CameraOdometryOutputData,
     device: str = "cuda",
-) -> SupercomboPartialOutput:
+) -> SupercomboOutputLogged:
     """Inputs a modelv2 object and returns the (1, 5992) size tensor
     including all the outputs from the model excluding the
     hidden state (which has size (1, 512)).
@@ -665,7 +665,7 @@ class Comma3xDataset(Dataset):
 
     def __getitem__(
         self, idx: int
-    ) -> Tuple[SupercomboPartialTorchInput, SupercomboPartialOutput, SupercomboEnv]:
+    ) -> Tuple[SupercomboPartialTorchInput, SupercomboOutputLogged, SupercomboEnv]:
         rlog_relevant = self._get_relevant_data_from_rlog(idx)
         supercombo_env: SupercomboEnv = {
             "lateral_active": torch.tensor(

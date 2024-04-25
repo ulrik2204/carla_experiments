@@ -19,10 +19,12 @@ from carla_experiments.common.types_common import (
     FirstSliceSupercomboOutput,
     MetaSliced,
     MetaTensors,
+    PlanFull,
     PlanSliced,
     PlanTensors,
     PoseTensors,
     SupercomboFullOutput,
+    SupercomboOutputLogged,
 )
 
 
@@ -200,13 +202,17 @@ def parse_supercombo_outputs(
         plan_stds, SUPERCOMBO_PLAN_SLICES, output_type=PlanSliced
     )
 
-    plan_dict: PlanTensors = {
+    plan_dict: PlanFull = {
         "position": plan_sliced["position"],
         "position_stds": plan_stds_sliced["position"],
         "velocity": plan_sliced["position"],
+        "velocity_stds": plan_stds_sliced["position"],
         "acceleration": plan_sliced["acceleration"],
+        "acceleration_stds": plan_stds_sliced["acceleration"],
         "t_from_current_euler": plan_sliced["t_from_current_euler"],
+        "t_from_current_euler_stds": plan_stds_sliced["t_from_current_euler"],
         "orientation_rate": plan_sliced["orientation_rate"],
+        "orientation_rate_stds": plan_stds_sliced["orientation_rate"],
     }
     meta_dict: MetaTensors = {
         "engaged_prob": meta_sliced["engaged"],
@@ -239,7 +245,6 @@ def parse_supercombo_outputs(
         "lane_line_stds": lane_line_stds[:, :, 0, 0],
         "road_edges": road_edges,
         "road_edge_stds": road_edge_stds[:, :, 0, 0],
-        # TODO: Continue end slicing here
         "lead": lead,
         "lead_stds": lead_stds,
         "lead_prob": lead_prob,
@@ -257,14 +262,18 @@ def parse_supercombo_outputs(
     }
 
 
-def total_loss(pred: dict, ground_truth: dict) -> float:
+def total_loss(
+    pred: Union[SupercomboFullOutput, Dict],
+    ground_truth: Union[SupercomboOutputLogged, Dict],
+) -> float:
     diffs = []
-    for key, value in pred.items():
-        if isinstance(value, torch.Tensor):
-            diff = float(torch.sum(torch.abs(value - ground_truth[key])))
+    for key, gt_value in ground_truth.items():
+        pred_value = pred[key]
+        if isinstance(pred_value, torch.Tensor):
+            diff = float(torch.sum(torch.abs(pred_value - gt_value)))
             diffs.append(diff)
-        if isinstance(value, dict):
-            diff = float(total_loss(value, ground_truth[key]))
+        if isinstance(pred_value, dict):
+            diff = float(total_loss(pred_value, ground_truth[key]))
             diffs.append(diff)
     return sum(diffs) / len(diffs)
 

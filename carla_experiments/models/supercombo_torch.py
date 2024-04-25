@@ -9,7 +9,7 @@ from tqdm import tqdm
 from carla_experiments.common.constants import SupercomboInputShapes
 from carla_experiments.common.types_common import (
     SupercomboFullTorchInputs,
-    SupercomboPartialOutput,
+    SupercomboOutputLogged,
 )
 from carla_experiments.datasets.comma3x_dataset import Comma3xDataset, get_dict_shape
 from carla_experiments.models.supercombo_utils import (
@@ -96,7 +96,7 @@ def main_torch():
             print("out sizes", get_dict_shape(parsed_pred))
             print("\nground_truth sizes\n", get_dict_shape(ground_truth))
             compare_pred = cast(
-                SupercomboPartialOutput,
+                SupercomboOutputLogged,
                 {
                     key: value
                     for key, value in parsed_pred.items()
