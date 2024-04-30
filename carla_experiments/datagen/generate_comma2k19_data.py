@@ -365,59 +365,18 @@ def choose_segments(
     return all_segments[rest_start_index:]
 
 
-def create_all_segments(tasklist: List[str]):
-    town01_segments = [
-        generate_simple_segment("Town01", Path(item), i)
-        for i, item in enumerate(tasklist[:200], 1)
-    ]
-    town02_segments = [
-        generate_simple_segment("Town02", Path(item), i)
-        for i, item in enumerate(tasklist[200:400], 1)
-    ]
-    town03_segments = [
-        generate_simple_segment("Town03", Path(item), i)
-        for i, item in enumerate(tasklist[400:600], 1)
-    ]
-    town04_segments = [
-        generate_simple_segment("Town04", Path(item), i)
-        for i, item in enumerate(tasklist[600:800], 1)
-    ]
-    town06_segments = [
-        generate_simple_segment("Town06", Path(item), i)
-        for i, item in enumerate(tasklist[800:1000], 1)
-    ]
-    town07_segments = [
-        generate_simple_segment("Town07", Path(item), i)
-        for i, item in enumerate(tasklist[1000:1200], 1)
-    ]
-    town10_segments = [
-        generate_simple_segment("Town10HD", Path(item), i)
-        for i, item in enumerate(tasklist[1200:1400], 1)
-    ]
-    town042_segments = [
-        generate_simple_segment("Town04", Path(item), i)
-        for i, item in enumerate(tasklist[1400:1600], 1)
-    ]
-    town062_segments = [
-        generate_simple_segment("Town06", Path(item), i)
-        for i, item in enumerate(tasklist[1600:1800], 1)
-    ]
-    town072_segments = [
-        generate_simple_segment("Town07", Path(item), i)
-        for i, item in enumerate(tasklist[1800:], 1)
-    ]
-    return (
-        town01_segments
-        + town02_segments
-        + town03_segments
-        + town04_segments
-        + town06_segments
-        + town07_segments
-        + town10_segments
-        + town042_segments
-        + town062_segments
-        + town072_segments
-    )
+def create_all_segments(
+    tasklist: List[str], townlist: List[str], segments_per_town=200
+):
+    allsegments = []
+    for i, town in enumerate(townlist):
+        subtasks = tasklist[i * segments_per_town : (i + 1) * segments_per_town]
+        subsegments = [
+            generate_simple_segment(town, Path(item), i)
+            for i, item in enumerate(subtasks, 1)
+        ]
+        allsegments.extend(subsegments)
+    return allsegments
 
 
 @click.command()
@@ -434,7 +393,7 @@ def main(root_folder: Optional[str], progress_file: Optional[str]):
         base_path = Path("./output") / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     else:
         base_path = Path(root_folder)
-    number_of_segments = 1
+    number_of_segments = 2019
     segment_save_path_list = [
         (base_path / f"Chunk_{i//100 + 1}/Batch_{i//10 + 1}/Segment_{i}").as_posix()
         for i in range(1, number_of_segments + 1)
@@ -446,11 +405,24 @@ def main(root_folder: Optional[str], progress_file: Optional[str]):
         len(segment_save_path_list),
     )
     progress_handler = ProgressHandler(used_progress_file, segment_save_path_list)
-    all_segments = [
-        generate_simple_segment("Town04", Path(item), i)
-        for i, item in enumerate(segment_save_path_list, 1)
-    ]
-    # all_segments = create_all_segments(segment_save_path_list)
+    # Original townlist
+    # townlist = [
+    #     "Town01",
+    #     "Town02",
+    #     "Town03",
+    #     "Town04",
+    #     "Town06",
+    #     "Town07",
+    #     "Town10HD",
+    #     "Town04",
+    #     "Town06",
+    #     "Town07",
+    # ]
+    townlist = ["Town04", "Town06"]
+    segments_per_town = 1009
+    all_segments = create_all_segments(
+        segment_save_path_list, townlist, segments_per_town
+    )
     chosen_segments = choose_segments(all_segments, progress_handler.get_progress())
     print(
         "Starting from segment",

@@ -11,14 +11,18 @@ cleanup_and_exit() {
 
 # Trap SIGINT and call the cleanup_and_exit function when caught
 trap cleanup_and_exit SIGINT
-
+this_time=$(date +"%Y-%m-%d-%H-%M")
 if [ $# -eq 0 ]; then
-    root_folder="output/$(date +"%Y-%m-%d-%H-%M-%S")"
+    root_folder="output/$this_time"
 else
     root_folder=$1
 fi
+if [ $# -eq 2 ]; then
+    progress_file=$2
+else
+    progress_file="progress-$this_time.txt"
+fi
 comma_folder="$root_folder/carla2k19"
-progress_file=$2
 
 max_attempts=100
 attempt_num=1
@@ -26,7 +30,8 @@ attempt_num=1
 while true; do
     echo "Attempt $attempt_num"
     echo "Starting in $root_folder"
-    nohup sh ../Carla2/CARLA_0.9.15/CarlaUE4.sh &
+    nohup sh ../Carla2/CARLA_0.9.15/CarlaUE4.sh -RenderOffScreen &
+    echo "Waiting for Carla to start..."
     sleep 10
     poetry run python -m carla_experiments.datagen.generate_comma2k19_data --root-folder=$comma_folder --progress-file=$progress_file
     
