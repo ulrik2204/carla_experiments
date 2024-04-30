@@ -18,8 +18,9 @@ else
     root_folder=$1
 fi
 comma_folder="$root_folder/carla2k19"
+progress_file=$2
 
-max_attempts=10
+max_attempts=100
 attempt_num=1
 
 while true; do
@@ -27,7 +28,7 @@ while true; do
     echo "Starting in $root_folder"
     nohup sh ../Carla2/CARLA_0.9.15/CarlaUE4.sh &
     sleep 10
-    poetry run python -m carla_experiments.datagen.generate_comma2k19_data --root-folder=$comma_folder --progress-file="./progress-02-15_19-32.txt"  # TODO: Add args
+    poetry run python -m carla_experiments.datagen.generate_comma2k19_data --root-folder=$comma_folder --progress-file=$progress_file
     
     # Check the exit status of the command
     if [ $? -eq 0 ]; then
