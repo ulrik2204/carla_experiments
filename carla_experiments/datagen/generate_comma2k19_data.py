@@ -156,6 +156,7 @@ def configure_traffic_manager(
     traffic_manager.set_synchronous_mode(True)
     traffic_manager.set_respawn_dormant_vehicles(True)
     traffic_manager.set_boundaries_respawn_dormant_vehicles(25, 700)
+    traffic_manager.set_route(ego_vehicle, ["Straight"] * 100000)
 
     # traffic_manager.set_desired_speed(ego_vehicle, 50 / 3.6)  # 50 km/h
     # traffic_manager.set_hybrid_physics_mode(True)
