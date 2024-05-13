@@ -11,12 +11,12 @@ from carla_experiments.carla_utils.setup import (
     BatchContext,
     game_loop_segment,
     setup_carla_client,
-    setup_sensors,
 )
-from carla_experiments.carla_utils.spawn import spawn_ego_vehicle
+from carla_experiments.carla_utils.spawn import spawn_ego_vehicle, spawn_sensors
 
 
-class AppActorsMap(TypedDict): ...
+class AppActorsMap(TypedDict):
+    pass
 
 
 class AppSensorMap(TypedDict):
@@ -83,7 +83,7 @@ def main():
         world, autopilot=True, spawn_point=carla_map.get_spawn_points()[0]
     )
     sensor_data_queue = Queue()
-    sensor_map = setup_sensors(
+    sensor_map = spawn_sensors(
         world,
         ego_vehicle,
         sensor_data_queue=sensor_data_queue,

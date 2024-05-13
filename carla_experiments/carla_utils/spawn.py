@@ -1,16 +1,34 @@
+import math
 import random
 import threading
 import time
-from typing import Callable, List, Optional, Tuple, TypeVar, cast
+import weakref
+from queue import Queue
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    cast,
+)
 
 import carla
 
-from carla_experiments.carla_utils.types_carla_utils import SensorBlueprint
+from carla_experiments.carla_utils.constants import AttributeDefaults, SensorBlueprints
+from carla_experiments.carla_utils.types_carla_utils import (
+    SensorBlueprint,
+    SensorConfig,
+)
 
 TSensorData = TypeVar("TSensorData", bound=carla.SensorData)
 
 
-def spawn_sensor(
+def spawn_single_sensor(
     world: carla.World,
     blueprint: SensorBlueprint[TSensorData],
     location: Tuple[float, float, float],
@@ -20,8 +38,27 @@ def spawn_sensor(
     modify_blueprint_fn: Optional[
         Callable[[carla.ActorBlueprint], carla.ActorBlueprint]
     ] = None,
-    on_measurement_received: Callable[[TSensorData], None] = lambda _: None,
+    on_sensor_data_received: Optional[Callable[[TSensorData], None]] = None,
 ) -> carla.Sensor:
+    """Spawns a single sensor in the world and attaches it to the actor if provided.
+
+    Args:
+        world (carla.World): The carla World object to spawn the sensor with.
+        blueprint (SensorBlueprint[TSensorData]): What sensor to create.
+        location (Tuple[float, float, float]): The xyz Cartesian coordinate in CARLA to spawn at.
+        rotation (Tuple[float, float, float]): The euler angle in CARLA to rotate the sensor.
+        attach_to (Optional[carla.Actor], optional): The actor to attach the sensor to. Defaults to None.
+        attachment_type (carla.AttachmentType, optional): The type of attachment.
+            Defaults to carla.AttachmentType.Rigid.
+        modify_blueprint_fn (Optional[ Callable[[carla.ActorBlueprint], carla.ActorBlueprint] ], optional): A function
+            to modify the ActorBlueprint spawned. Defaults to None.
+        on_measurement_received (Optional[Callable[[TSensorData], None]):
+            The function to call when sensor data is received.
+            Defaults to None.
+
+    Returns:
+        carla.Sensor: _description_
+    """
     sensor_blueprint = world.get_blueprint_library().find(blueprint.name)
     sensor_blueprint = (
         modify_blueprint_fn(sensor_blueprint)
@@ -41,10 +78,95 @@ def spawn_sensor(
             attachment_type,
         ),
     )
-
-    sensor_object.listen(on_measurement_received)
+    if on_sensor_data_received:
+        sensor_object.listen(on_sensor_data_received)
 
     return sensor_object
+
+
+def _create_blueprint_changer(
+    attributes: Mapping[str, str],
+    defaults: Mapping[str, str],
+):
+    def inner(blueprint: carla.ActorBlueprint):
+        for key, value in defaults.items():
+            blueprint.set_attribute(key, value)
+        for key, value in attributes.items():
+            blueprint.set_attribute(key, value)
+        return blueprint
+
+    return inner
+
+
+def _handle_sensor_setup(
+    world: carla.World,
+    ego_vehicle: carla.Vehicle,
+    sensor_id: str,
+    sensor_config: SensorConfig,
+    sensor_data_queue: Queue,
+) -> carla.Sensor:
+    sensor_blueprint = sensor_config["blueprint"]
+    attributes = sensor_config["attributes"]
+
+    modify_camera_bp = _create_blueprint_changer(attributes, AttributeDefaults.CAMERA)
+    modify_lidar_bp = _create_blueprint_changer(attributes, AttributeDefaults.LIDAR)
+    modify_radar_bp = _create_blueprint_changer(attributes, AttributeDefaults.RADAR)
+    modify_imu_bp = _create_blueprint_changer(attributes, AttributeDefaults.IMU)
+    modify_gnss_bp = _create_blueprint_changer(attributes, AttributeDefaults.GNSS)
+
+    modify_blueprint_fn_map: Dict[
+        SensorBlueprint[Any],
+        Optional[Callable[[carla.ActorBlueprint], carla.ActorBlueprint]],
+    ] = {
+        SensorBlueprints.CAMERA_RGB: modify_camera_bp,
+        SensorBlueprints.CAMERA_DEPTH: modify_camera_bp,
+        SensorBlueprints.CAMERA_DVS: modify_camera_bp,
+        SensorBlueprints.CAMERA_SEMANTIC_SEGMENTATION: modify_camera_bp,
+        SensorBlueprints.COLLISION: None,
+        SensorBlueprints.GNSS: modify_gnss_bp,
+        SensorBlueprints.IMU: modify_imu_bp,
+        SensorBlueprints.LANE_INVASION: None,
+        SensorBlueprints.OBSTACLE: None,
+        SensorBlueprints.LIDAR_RANGE: modify_lidar_bp,
+        SensorBlueprints.LIDAR_SEMANTIC_SEGMENTATION: modify_lidar_bp,
+        SensorBlueprints.RADAR_RANGE: modify_radar_bp,
+    }
+    if sensor_blueprint in modify_blueprint_fn_map:
+        modify_blueprint_fn = modify_blueprint_fn_map[sensor_blueprint]
+    else:
+        raise ValueError(f"Unknown sensor blueprint {sensor_blueprint}")
+
+    sensor = spawn_single_sensor(
+        world,
+        sensor_blueprint,
+        sensor_config["location"],
+        sensor_config["rotation"],
+        ego_vehicle,
+        modify_blueprint_fn=modify_blueprint_fn,
+        on_sensor_data_received=lambda data: sensor_data_queue.put((sensor_id, data)),
+    )
+    return sensor
+
+
+TSensorMap = TypeVar("TSensorMap", bound=Mapping[str, Any])
+
+
+def spawn_sensors(
+    world: carla.World,
+    ego_vehicle: carla.Vehicle,
+    sensor_data_queue: Queue,
+    return_sensor_map_type: Type[TSensorMap],
+    sensor_config: Mapping[str, SensorConfig],
+) -> TSensorMap:
+    sensor_map: Mapping[str, carla.Sensor] = {}
+    for sensor_id, config in sensor_config.items():
+        sensor = _handle_sensor_setup(
+            world, ego_vehicle, sensor_id, config, sensor_data_queue
+        )
+        sensor_map[sensor_id] = sensor
+    time.sleep(0.1)
+    world.tick()
+    return cast(return_sensor_map_type, sensor_map)
 
 
 def control_vehicle(
@@ -62,6 +184,7 @@ def spawn_vehicle(
     set_attributes: Optional[
         Callable[[carla.ActorBlueprint], carla.ActorBlueprint]
     ] = None,
+    time_to_live: Optional[float] = None,
     tick: bool = True,
 ) -> carla.Vehicle:
     blueprints = world.get_blueprint_library().filter(
@@ -93,43 +216,17 @@ def spawn_vehicle(
             world.tick()
             time.sleep(0.1)
 
+    if time_to_live is not None:
+        weak_vehicle = weakref.ref(vehicle)
+
+        def destroy_vehicle():
+            vehicle = weak_vehicle()
+            if vehicle is not None:
+                vehicle.destroy()
+
+        threading.Timer(interval=time_to_live, function=destroy_vehicle).start()
+
     return vehicle
-
-
-def spawn_ego_vehicle_old(
-    world: carla.World,
-    blueprint: str = "vehicle.tesla.model3",
-    autopilot: bool = False,
-    choose_spawn_point: Optional[
-        Callable[[List[carla.Transform]], carla.Transform]
-    ] = None,
-) -> carla.Vehicle:
-    ego_bp = world.get_blueprint_library().find(blueprint)
-    ego_bp.set_attribute("role_name", "ego")
-    ego_color = ego_bp.get_attribute("color").recommended_values[0]
-    ego_bp.set_attribute("color", ego_color)
-
-    spawn_points = world.get_map().get_spawn_points()
-    number_of_spawn_points = len(spawn_points)
-
-    if number_of_spawn_points == 0:
-        raise Exception("Could not find any spawn points")
-
-    ego_transform = (
-        choose_spawn_point(spawn_points)
-        if choose_spawn_point
-        else random.choice(spawn_points)
-    )
-    ego_vehicle = cast(carla.Vehicle, world.spawn_actor(ego_bp, ego_transform))
-
-    if autopilot:
-        # Sleep before setting autopilot is important because of timing issues.
-        time.sleep(1)
-        world.tick()
-        time.sleep(3)
-        ego_vehicle.set_autopilot(True)
-
-    return ego_vehicle
 
 
 def spawn_ego_vehicle(
@@ -160,7 +257,10 @@ def spawn_ego_vehicle(
 
 
 def _try_spawn_vehicle_bot(
-    world: carla.World, possible_spawn_points: List[carla.Transform], tries: int = 10
+    world: carla.World,
+    possible_spawn_points: List[carla.Transform],
+    time_to_live: Optional[float] = None,
+    tries: int = 10,
 ) -> Optional[carla.Vehicle]:
     if tries == 0:
         print("Could not spawn vehicle bot")
@@ -168,7 +268,11 @@ def _try_spawn_vehicle_bot(
     spawn_point = random.choice(possible_spawn_points)
     try:
         vehicle = spawn_vehicle(
-            world, spawn_point=spawn_point, autopilot=True, tick=False
+            world,
+            spawn_point=spawn_point,
+            autopilot=True,
+            time_to_live=time_to_live,
+            tick=False,
         )
         return vehicle
     except RuntimeError as e:
@@ -184,6 +288,7 @@ def spawn_vehicle_bots(
     world: carla.World,
     number_of_vehicles: int,
     accessible_spawn_points: Optional[List[carla.Transform]] = None,
+    time_to_live: Optional[float] = None,
 ) -> List[carla.Vehicle]:
     vehicles = []
     spawn_points = (
@@ -192,7 +297,7 @@ def spawn_vehicle_bots(
         else world.get_map().get_spawn_points()
     )
     for _ in range(number_of_vehicles):
-        vehicle = _try_spawn_vehicle_bot(world, spawn_points)
+        vehicle = _try_spawn_vehicle_bot(world, spawn_points, time_to_live)
         vehicles.append(vehicle)
     time.sleep(0.1)
     world.tick()
@@ -205,7 +310,10 @@ def _walk_towards_goal(
     controller: carla.WalkerAIController,
     walker_path: List[carla.Location],
     walk_randomly_afterwards: bool = False,
+    time_to_live: Optional[float] = None,
 ):
+    start_time = time.time()
+    time_to_live = time_to_live or math.inf
     for goal in walker_path:
         try:
             controller.go_to_location(goal)
@@ -216,8 +324,14 @@ def _walk_towards_goal(
             # Wait for the walker to reach the destination (with some threshold)
             while walker.get_transform().location.distance(goal) > 1.0:
                 time.sleep(1)
+                if time.time() - start_time > time_to_live:
+                    walker.destroy()
+                    return
 
-            time.sleep(random.randint(1, 5))
+            time.sleep(1)
+            if time.time() - start_time > time_to_live:
+                walker.destroy()
+                return
         # If the walker is destroyed, stop the loop
         except RuntimeError:
             break
@@ -226,8 +340,13 @@ def _walk_towards_goal(
 
 
 def _random_walking_behaviour(
-    world: carla.World, walker: carla.Walker, controller: carla.WalkerAIController
+    world: carla.World,
+    walker: carla.Walker,
+    controller: carla.WalkerAIController,
+    time_to_live: Optional[float] = None,
 ):
+    start_time = time.time()
+    time_to_live = time_to_live or math.inf
     while True:
         # Choose a random destination
         try:
@@ -240,11 +359,15 @@ def _random_walking_behaviour(
             # Wait for the walker to reach the destination (with some threshold)
             while walker.get_transform().location.distance(destination) > 1.0:
                 time.sleep(1)
-
-            # Optional: Wait for some time before moving to the next destination
-            time.sleep(random.randint(1, 5))
+                if time.time() - start_time > time_to_live:
+                    walker.destroy()
+                    return
+            time.sleep(2)
+            if time.time() - start_time > time_to_live:
+                walker.destroy()
+                return
         # If the walker is destroyed, stop the loop
-        except RuntimeError:
+        except Exception:
             break
 
 
@@ -254,6 +377,7 @@ def spawn_walker(
     spawn_point: Optional[carla.Transform] = None,
     walker_path: Optional[List[carla.Location]] = None,
     walk_randomly_afterwards: bool = True,
+    time_to_live: Optional[float] = None,
     tick: bool = True,
 ) -> Tuple[carla.WalkerAIController, carla.Walker]:
     blueprint_library = world.get_blueprint_library()
@@ -295,6 +419,7 @@ def spawn_walker(
                 walker_controller,
                 walker_path,
                 walk_randomly_afterwards,
+                time_to_live,
             ),
             daemon=True,
         )
@@ -305,7 +430,7 @@ def spawn_walker(
         # walker_controller.go_to_location(destination)
         walk_random_thread = threading.Thread(
             target=_random_walking_behaviour,
-            args=(world, walker, walker_controller),
+            args=(world, walker, walker_controller, time_to_live),
             daemon=True,
         )
         walk_random_thread.start()
@@ -313,14 +438,11 @@ def spawn_walker(
     return walker_controller, walker
 
 
-def _format_location(location: carla.Location):
-    return f"Location: ({location.x}, {location.y}, {location.z})"
-
-
 def spawn_walker_bots(
     world: carla.World,
     max_spawn_count: int,
     accessible_spawn_points: Optional[List[carla.Transform]] = None,
+    time_to_live: Optional[float] = None,
 ) -> List[Tuple[carla.WalkerAIController, carla.Walker]]:
     """Spawns walker bots in the world up to the number of max_spawn_count.
     The pedestrians will be spawned at random locations in the world using world.get_random_location_from_navigation(),
@@ -341,7 +463,7 @@ def spawn_walker_bots(
     walkers: List[Tuple[carla.WalkerAIController, carla.Walker]] = []
     for _ in range(max_spawn_count):
 
-        result = _try_spawn_walker_bot(world, accessible_spawn_points)
+        result = _try_spawn_walker_bot(world, accessible_spawn_points, time_to_live)
         if result is not None:
             controller, walker = result
             walkers.append((controller, walker))
@@ -352,6 +474,7 @@ def spawn_walker_bots(
 def _try_spawn_walker_bot(
     world: carla.World,
     accessible_spawn_points: Optional[List[carla.Transform]] = None,
+    time_to_live: Optional[float] = None,
     tries: int = 10,
 ) -> Optional[Tuple[carla.WalkerAIController, carla.Walker]]:
     if tries == 0:
@@ -366,7 +489,9 @@ def _try_spawn_walker_bot(
             if accessible_spawn_points is None
             else random.choice(accessible_spawn_points)
         )
-        controller, walker = spawn_walker(world, spawn_point=spawn_point, tick=True)
+        controller, walker = spawn_walker(
+            world, spawn_point=spawn_point, time_to_live=time_to_live, tick=True
+        )
         return controller, walker
     except RuntimeError as e:
         if str(e) == "Spawn failed because of collision at spawn position":
@@ -374,6 +499,6 @@ def _try_spawn_walker_bot(
                 f"spawn collision while spawning walker, retrying (tries left: {tries})"
             )
             return _try_spawn_walker_bot(
-                world, accessible_spawn_points, tries=tries - 1
+                world, accessible_spawn_points, time_to_live, tries=tries - 1
             )
         raise e

@@ -1,5 +1,6 @@
 import os
 import random
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -18,53 +19,20 @@ from carla_experiments.carla_utils.setup import (
     create_segment,
     generate_segment_dataset,
     setup_carla_client,
-    setup_sensors,
 )
 from carla_experiments.carla_utils.spawn import (
     spawn_ego_vehicle,
+    spawn_sensors,
     spawn_vehicle_bots,
     spawn_walker_bots,
 )
-from carla_experiments.carla_utils.types_carla_utils import (
-    FullSegment,
-    FullSegmentConfigResult,
-)
+from carla_experiments.carla_utils.types_carla_utils import Segment, SegmentConfigResult
 from carla_experiments.common.position_and_rotation import (
     carla_location_to_ecef,
     carla_rotation_to_ecef_frd_quaternion,
 )
+from carla_experiments.datagen.generate_comma3x_data import ProgressHandler
 from carla_experiments.datagen.utils import mp4_to_hevc, pil_images_to_mp4
-
-
-class ProgressHandler:
-
-    def __init__(self, filepath: str, tasklist: List[str]) -> None:
-        # Progress denotes the index of the last completed task
-        self.progress = -1
-        self.tasklist = tasklist
-        self.filepath = filepath
-        if os.path.exists(filepath):
-            print("File exists resuming from file.")
-            print("filepath", filepath)
-            with open(filepath, "r") as f:
-                els = f.readlines()
-                index = len(els) - 1
-                task = tasklist[index].strip()
-                el = els[index].strip()
-                if task == el:
-                    self.progress = index
-                else:
-                    raise ValueError(
-                        f"Tasks in file do not match tasklist. {task} != {el}"
-                    )
-
-    def get_progress(self) -> int:
-        return self.progress
-
-    def update_progress(self) -> None:
-        self.progress += 1
-        with open(self.filepath, "a") as f:
-            f.write(f"{self.tasklist[self.progress]}\n")
 
 
 class AppActorMap(TypedDict):
@@ -90,6 +58,8 @@ class DataDict(TypedDict):
     location: List[np.ndarray]
     rotation: List[np.ndarray]
     images: List[Image.Image]
+    carla_location: List[np.ndarray]
+    carla_rotation: List[np.ndarray]
 
 
 @dataclass
@@ -120,6 +90,12 @@ def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
     context.data_dict["images"].append(image)
     context.data_dict["location"].append(location_np)
     context.data_dict["rotation"].append(rotation_np)
+    context.data_dict["carla_location"].append(
+        np.array([location.x, location.y, location.z])
+    )
+    context.data_dict["carla_rotation"].append(
+        np.array([rotation.pitch, rotation.yaw, rotation.roll])
+    )
     # print(f"after add [frame {frame}]", len(context.data_dict["images"]))
     # return {
     #     "location": {
@@ -243,9 +219,12 @@ def on_segment_end(context: AppContext, save_files_base_path: Path) -> None:
         context.data_dict["rotation"],
         global_pose_path / "frame_orientations",
     )
-    # Resetting the data_dict after each segment
-    # This shouldn't be necessary anymore
-    context.data_dict = {"location": [], "rotation": [], "images": []}
+    save_stacked_arrays(
+        context.data_dict["carla_location"], global_pose_path / "carla_positions"
+    )
+    save_stacked_arrays(
+        context.data_dict["carla_location"], global_pose_path / "carla_orientations"
+    )
 
 
 def configure_traffic_lights(world: carla.World):
@@ -259,7 +238,7 @@ def configure_traffic_lights(world: carla.World):
 
 
 def generate_simple_segment(map: str, segment_path: Path, segment_nr_in_map: int):
-    def simple_segment_config(settings: AppSettings) -> FullSegmentConfigResult:
+    def simple_segment_config(settings: AppSettings) -> SegmentConfigResult:
 
         # client = setup_carla_client("Town10HD")
         client = settings.client
@@ -295,7 +274,7 @@ def generate_simple_segment(map: str, segment_path: Path, segment_nr_in_map: int
         world.set_pedestrians_cross_factor(0.1)
         sensor_data_queue = Queue()
         # TODO: Check sensor positions
-        sensor_map = setup_sensors(
+        sensor_map = spawn_sensors(
             world,
             ego_vehicle,
             sensor_data_queue=sensor_data_queue,
@@ -320,7 +299,19 @@ def generate_simple_segment(map: str, segment_path: Path, segment_nr_in_map: int
         configure_traffic_lights(world)
 
         # client.get_trafficmanager().set_global_distance_to_leading_vehicle()
-        data_dict: DataDict = {"location": [], "rotation": [], "images": []}
+        data_dict: DataDict = {
+            "location": [],
+            "rotation": [],
+            "images": [],
+            "carla_location": [],
+            "carla_rotation": [],
+        }
+        actors = world.get_actors()
+        print("There should be 15 walkers, 10 vehicles and 1 ego vehicle.")
+        number_of_actors = len(actors)
+        number_of_vehicles = len(world.get_actors().filter("vehicle.*"))
+        number_of_walkers = len(world.get_actors().filter("walker.*"))
+        print(f"{number_of_actors=}, {number_of_vehicles=}, {number_of_walkers=}")
 
         context = AppContext(
             client=client,
@@ -352,9 +343,7 @@ def get_some(i, j, k):
     return f"Chunk_{i}/Batch_{j}/Segment_{k}"
 
 
-def choose_segments(
-    all_segments: List[FullSegment], progress: int
-) -> List[FullSegment]:
+def choose_segments(all_segments: List[Segment], progress: int) -> List[Segment]:
     print("progress", progress)
     print("all_segments", len(all_segments))
     if progress == len(all_segments):
@@ -366,17 +355,32 @@ def choose_segments(
 
 
 def create_all_segments(
-    tasklist: List[str], townlist: List[str], segments_per_town=200
+    base_path: Path,
+    segments_relative_paths: List[str],
+    towns: List[str],
+    segments_per_town=200,
 ):
     allsegments = []
-    for i, town in enumerate(townlist):
-        subtasks = tasklist[i * segments_per_town : (i + 1) * segments_per_town]
+    segments_relative_paths = [
+        (base_path / item).as_posix() for item in segments_relative_paths
+    ]
+    for i, town in enumerate(towns):
+        subtasks = segments_relative_paths[
+            i * segments_per_town : (i + 1) * segments_per_town
+        ]
         subsegments = [
             generate_simple_segment(town, Path(item), i)
             for i, item in enumerate(subtasks, 1)
         ]
         allsegments.extend(subsegments)
     return allsegments
+
+
+def after_segment_end(progress_handler: ProgressHandler):
+    progress_handler.update_progress()
+    if not progress_handler.is_finished():
+        # Restart the script after each segment
+        sys.exit(1)
 
 
 @click.command()
@@ -394,17 +398,17 @@ def main(root_folder: Optional[str], progress_file: Optional[str]):
     else:
         base_path = Path(root_folder)
     number_of_segments = 2019
-    segment_save_path_list = [
-        (base_path / f"Chunk_{i//100 + 1}/Batch_{i//10 + 1}/Segment_{i}").as_posix()
-        for i in range(1, number_of_segments + 1)
+    segments_relative_paths = [
+        f"Chunk_{i//100 + 1}/Batch_{i//10 + 1}/Segment_{i}"
+        for i in range(0, number_of_segments)
     ]
     print(
         "segment_save_path_list",
-        segment_save_path_list[-1],
+        segments_relative_paths[-1],
         "len",
-        len(segment_save_path_list),
+        len(segments_relative_paths),
     )
-    progress_handler = ProgressHandler(used_progress_file, segment_save_path_list)
+    progress_handler = ProgressHandler(used_progress_file, segments_relative_paths)
     # Original townlist
     # townlist = [
     #     "Town01",
@@ -419,23 +423,26 @@ def main(root_folder: Optional[str], progress_file: Optional[str]):
     #     "Town07",
     # ]
     townlist = ["Town04", "Town06"]
-    segments_per_town = 1009
+    segments_per_town = 1010  # Will be 1010 of Town04 and 1009 of Town06
     all_segments = create_all_segments(
-        segment_save_path_list, townlist, segments_per_town
+        base_path, segments_relative_paths, townlist, segments_per_town
     )
     chosen_segments = choose_segments(all_segments, progress_handler.get_progress())
     print(
         "Starting from segment",
-        segment_save_path_list[progress_handler.get_progress() + 1],
+        segments_relative_paths[progress_handler.get_progress() + 1],
     )
     print("Chosen segments", len(chosen_segments))
+    if len(chosen_segments) == 0:
+        print("No segments left to run.")
+        return
     # chunks = {"Chunk_1": [batch1]}
     carla_client = setup_carla_client()
     settings = AppSettings(frame_rate=20, client=carla_client)
     generate_segment_dataset(
         chosen_segments,
         settings,
-        after_segment_end=lambda _: progress_handler.update_progress(),
+        after_segment_end=lambda _: after_segment_end(progress_handler),
     )
 
 

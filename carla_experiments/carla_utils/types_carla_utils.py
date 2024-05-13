@@ -38,6 +38,12 @@ TSensorData = TypeVar("TSensorData")
 
 @dataclass
 class SensorBlueprint(Generic[TSensorData]):
+    """A dataclass representing the name of a sensor blueprint
+    as well as its corresponding type of sensor data.
+
+    THIS CLASS SHOULD BE BE INSTANTIATED, USE THE SensorBlueprints CONSTANT CLASS INSTEAD.
+    """
+
     name: str
     sensor_data_type: Type[TSensorData]
 
@@ -89,10 +95,10 @@ SaveItemValue = Union[Dict[str, "SaveItemValue"], np.ndarray, carla.Image, Image
 SaveItems = Dict[str, SaveItemValue]
 
 
-TContextContra = TypeVar("TContextContra", bound=BatchContext, contravariant=True)
-TSensorDataMapContra = TypeVar(
-    "TSensorDataMapContra", bound=Mapping[str, Any], contravariant=True
-)
+# TContextContra = TypeVar("TContextContra", bound=BatchContext, contravariant=True)
+# TSensorDataMapContra = TypeVar(
+#     "TSensorDataMapContra", bound=Mapping[str, Any], contravariant=True
+# )
 
 
 CarlaTask = Union[
@@ -100,87 +106,86 @@ CarlaTask = Union[
     Callable[[TContext, TSensorDataMap], Union[SaveItems, None]],
 ]
 
-TSaveFileBasePath = TypeVar("TSaveFileBasePath", bound=Optional[Path])
+# TSaveFileBasePath = TypeVar("TSaveFileBasePath", bound=Optional[Path])
 
+# TContextContra = TypeVar("TContextContra", bound=BatchContext, contravariant=True)
 
-class SegmentResultOptions(TypedDict, Generic[TContext], total=False):
-    on_finish_save_files: Callable[[TContext], SaveItems]
-    on_segment_end: Callable[[TContext, Path], None]
-    cleanup_actors: bool
-
-
-class SegmentResult(TypedDict, Generic[TContext, TSensorDataMap]):
-    tasks: List[CarlaTask[TContext, TSensorDataMap]]
-    options: SegmentResultOptions[TContext]
-
-
-class Segment(Protocol, Generic[TContext, TSensorDataMap]):
-    def __call__(
-        self, context: TContext
-    ) -> SegmentResult[TContext, TSensorDataMap]: ...
-
-
-TContextContra = TypeVar("TContextContra", bound=BatchContext, contravariant=True)
-
-TSettings = TypeVar("TSettings")
+# TSettings = TypeVar("TSettings")
 
 
 FlexiblePath = Union[str, Path]
 
 
-class DecoratedSegment(Protocol, Generic[TContextContra]):
-    def __call__(self, context: TContextContra, batch_base_path: Path) -> None: ...
+# class SegmentResultOptions(TypedDict, Generic[TContext], total=False):
+#     on_finish_save_files: Callable[[TContext], SaveItems]
+#     on_segment_end: Callable[[TContext, Path], None]
+#     cleanup_actors: bool
+
+
+# class SegmentResult(TypedDict, Generic[TContext, TSensorDataMap]):
+#     tasks: List[CarlaTask[TContext, TSensorDataMap]]
+#     options: SegmentResultOptions[TContext]
+
+
+# class Segment(Protocol, Generic[TContext, TSensorDataMap]):
+#     def __call__(
+#         self, context: TContext
+#     ) -> SegmentResult[TContext, TSensorDataMap]: ...
+
+
+# class DecoratedSegment(Protocol, Generic[TContextContra]):
+#     def __call__(self, context: TContextContra, batch_base_path: Path) -> None: ...
 
 
 # The NEW API
 
 
-class FullSegmentResultOptions(TypedDict, Generic[TContext], total=False):
+class SegmentResultOptions(TypedDict, Generic[TContext], total=False):
     on_segment_end: Callable[[TContext, Path], None]
     cleanup_actors: bool
 
 
-class FullSegmentConfigResult(TypedDict, Generic[TContext, TSensorDataMap]):
+class SegmentConfigResult(TypedDict, Generic[TContext, TSensorDataMap]):
     context: TContext
     tasks: List[CarlaTask[TContext, TSensorDataMap]]
-    options: FullSegmentResultOptions[TContext]
+    options: SegmentResultOptions[TContext]
 
 
 TSettingsContra = TypeVar("TSettingsContra", contravariant=True)
 
 
-class FullSegmentConfig(Protocol, Generic[TSettingsContra, TContext, TSensorDataMap]):
+class SegmentConfig(Protocol, Generic[TSettingsContra, TContext, TSensorDataMap]):
     def __call__(
         self, settings: TSettingsContra
-    ) -> FullSegmentConfigResult[TContext, TSensorDataMap]: ...
+    ) -> SegmentConfigResult[TContext, TSensorDataMap]: ...
 
 
-class FullSegment(Protocol, Generic[TSettingsContra]):
+class Segment(Protocol, Generic[TSettingsContra]):
     def __call__(self, settings: TSettingsContra) -> None: ...
 
 
 # END OF NEW API
 
 
-class BatchResultOptions(TypedDict, Generic[TContext], total=False):
-    on_batch_end: Callable[[TContext], None]
-    cleanup_actors: bool
+# class BatchResultOptions(TypedDict, Generic[TContext], total=False):
+#     on_batch_end: Callable[[TContext], None]
+#     cleanup_actors: bool
 
 
-class BatchResult(TypedDict, Generic[TContext]):
-    context: TContext
-    segments: List[DecoratedSegment[TContext]]
-    options: BatchResultOptions[TContext]
+# class BatchResult(TypedDict, Generic[TContext]):
+#     context: TContext
+#     segments: List[DecoratedSegment[TContext]]
+#     options: BatchResultOptions[TContext]
 
 
-class Batch(Protocol, Generic[TSettingsContra]):
-    def __call__(self, settings: TSettingsContra) -> BatchResult: ...
+# class Batch(Protocol, Generic[TSettingsContra]):
+#     def __call__(self, settings: TSettingsContra) -> BatchResult: ...
 
 
-class DecoratedBatch(Protocol, Generic[TSettingsContra]):
-    def __call__(
-        self,
-        base_path: Path,
-        settings: TSettingsContra,
-        on_segment_end: Optional[Callable[[], None]] = None,
-    ) -> None: ...
+# class DecoratedBatch(Protocol, Generic[TSettingsContra]):
+#     def __call__(
+#         self,
+#         base_path: Path,
+#         settings: TSettingsContra,
+#         on_segment_end: Optional[Callable[[], None]] = None,
+#     ) -> None: ...

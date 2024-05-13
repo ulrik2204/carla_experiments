@@ -9,12 +9,8 @@ from typing import TypedDict
 import carla
 
 from carla_experiments.carla_utils.constants import SensorBlueprints
-from carla_experiments.carla_utils.setup import (
-    game_loop_segment,
-    setup_carla_client,
-    setup_sensors,
-)
-from carla_experiments.carla_utils.spawn import spawn_ego_vehicle
+from carla_experiments.carla_utils.setup import game_loop_segment, setup_carla_client
+from carla_experiments.carla_utils.spawn import spawn_ego_vehicle, spawn_sensors
 from carla_experiments.carla_utils.types_carla_utils import BatchContext
 
 
@@ -85,7 +81,7 @@ def main():
     world = client.get_world()
     ego_vehicle = spawn_ego_vehicle(world, autopilot=True)
     sensor_data_queue = Queue()
-    sensor_map = setup_sensors(
+    sensor_map = spawn_sensors(
         world,
         ego_vehicle,
         sensor_data_queue,

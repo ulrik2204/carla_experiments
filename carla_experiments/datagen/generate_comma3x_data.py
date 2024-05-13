@@ -18,53 +18,24 @@ from carla_experiments.carla_utils.setup import (
     create_segment,
     generate_segment_dataset,
     setup_carla_client,
-    setup_sensors,
 )
 from carla_experiments.carla_utils.spawn import (
     spawn_ego_vehicle,
+    spawn_sensors,
     spawn_vehicle_bots,
     spawn_walker_bots,
 )
-from carla_experiments.carla_utils.types_carla_utils import (
-    FullSegment,
-    FullSegmentConfigResult,
-)
+from carla_experiments.carla_utils.types_carla_utils import Segment, SegmentConfigResult
 from carla_experiments.common.position_and_rotation import (
     carla_location_to_ecef,
     carla_rotation_to_ecef_frd_quaternion,
+    carla_vector_to_ecef,
 )
-from carla_experiments.datagen.utils import mp4_to_hevc, pil_images_to_mp4
-
-
-class ProgressHandler:
-
-    def __init__(self, filepath: str, tasklist: List[str]) -> None:
-        # Progress denotes the index of the last completed task
-        self.progress = -1
-        self.tasklist = tasklist
-        self.filepath = filepath
-        if os.path.exists(filepath):
-            print("File exists resuming from file.")
-            print("filepath", filepath)
-            with open(filepath, "r") as f:
-                els = f.readlines()
-                index = len(els) - 1
-                task = tasklist[index].strip()
-                el = els[index].strip()
-                if task == el:
-                    self.progress = index
-                else:
-                    raise ValueError(
-                        f"Tasks in file do not match tasklist. {task} != {el}"
-                    )
-
-    def get_progress(self) -> int:
-        return self.progress
-
-    def update_progress(self) -> None:
-        self.progress += 1
-        with open(self.filepath, "a") as f:
-            f.write(f"{self.tasklist[self.progress]}\n")
+from carla_experiments.datagen.utils import (
+    ProgressHandler,
+    mp4_to_hevc,
+    pil_images_to_mp4,
+)
 
 
 class AppActorMap(TypedDict):
@@ -74,10 +45,12 @@ class AppActorMap(TypedDict):
 
 class AppSensorMap(TypedDict):
     front_camera: carla.Sensor
+    wide_camera: carla.Sensor
 
 
 class AppSensorDataMap(TypedDict):
     front_camera: carla.Image
+    wide_camera: carla.Image
 
 
 @dataclass
@@ -90,6 +63,8 @@ class DataDict(TypedDict):
     location: List[np.ndarray]
     rotation: List[np.ndarray]
     images: List[Image.Image]
+    wide_images: List[Image.Image]
+    velocity: List[np.ndarray]
 
 
 @dataclass
@@ -97,41 +72,42 @@ class AppContext(BatchContext[AppSensorMap, AppActorMap], AppSettings):
     data_dict: DataDict
 
 
-def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
-    front_image = sensor_data_map["front_camera"]
-    # radar_data = parse_radar_data(sensor_data_map["radar"])
-    # imu_data = parse_imu_data(sensor_data_map["imu"])
-    # gnss_data = parse_gnss_data(sensor_data_map["gnss"])
-    # speed = calculate_vehicle_speed(context.ego_vehicle)
-    # front_image.timestamp  # TODO: use this for frame times?
+def get_data_images(sensor_data_map: AppSensorDataMap):
+    front_image_carla = sensor_data_map["front_camera"]
+    wide_image_carla = sensor_data_map["wide_camera"]
+    front_image = carla_image_to_pil_image(front_image_carla)
+    wide_image = carla_image_to_pil_image(wide_image_carla)
+    return front_image, wide_image
+
+
+def get_data_transform(context: AppContext, sensor_data_map: AppSensorDataMap):
     ego_vehicle = context.ego_vehicle
     vehicle_transform = ego_vehicle.get_transform()
     camera_transform = context.sensor_map["front_camera"].get_transform()
     location = vehicle_transform.location
-    # rotation = vehicle_transform.rotation
     rotation = camera_transform.rotation
     location_np = carla_location_to_ecef(context.map, location)
-    # location_np = np.array([location.x, location.y, location.z])
     rotation_np = carla_rotation_to_ecef_frd_quaternion(context.map, rotation)
-    # rotation_np = np.array([rotation.pitch, rotation.yaw, rotation.roll])
-    # frame = _generate_frame_id()
-    # print(f"before add [frame {frame}]", len(context.data_dict["images"]))
-    image = carla_image_to_pil_image(front_image)  # .transpose(Image.FLIP_LEFT_RIGHT)
-    context.data_dict["images"].append(image)
-    context.data_dict["location"].append(location_np)
-    context.data_dict["rotation"].append(rotation_np)
-    # print(f"after add [frame {frame}]", len(context.data_dict["images"]))
-    # return {
-    #     "location": {
-    #         str(frame): location_np,
-    #     },
-    #     "rotation": {
-    #         str(frame): rotation_np,
-    #     },
-    #     "images": {
-    #         str(frame): front_image,
-    #     },
-    # }
+    return location_np, rotation_np
+
+
+def get_data_velocity(context: AppContext, sensor_data_map: AppSensorDataMap):
+    ego_vehicle = context.ego_vehicle
+    vehicle_velocity_carla = ego_vehicle.get_velocity()
+    velocity_np = carla_vector_to_ecef(vehicle_velocity_carla)
+    return velocity_np
+
+
+def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
+    narrow_image_np, wide_image_np = get_data_images(sensor_data_map)
+    location, rotation = get_data_transform(context, sensor_data_map)
+    velocity = get_data_velocity(context, sensor_data_map)
+
+    context.data_dict["images"].append(narrow_image_np)
+    context.data_dict["wide_images"].append(wide_image_np)
+    context.data_dict["location"].append(location)
+    context.data_dict["rotation"].append(rotation)
+    context.data_dict["velocity"].append(velocity)
 
 
 def spectator_follow_ego_vehicle_task(
@@ -244,7 +220,13 @@ def on_segment_end(context: AppContext, save_files_base_path: Path) -> None:
     )
     # Resetting the data_dict after each segment
     # This shouldn't be necessary anymore
-    context.data_dict = {"location": [], "rotation": [], "images": []}
+    context.data_dict = {
+        "location": [],
+        "rotation": [],
+        "images": [],
+        "wide_images": [],
+        "velocity": [],
+    }
 
 
 def configure_traffic_lights(world: carla.World):
@@ -258,7 +240,7 @@ def configure_traffic_lights(world: carla.World):
 
 
 def generate_simple_segment(map: str, segment_path: Path, segment_nr_in_map: int):
-    def simple_segment_config(settings: AppSettings) -> FullSegmentConfigResult:
+    def simple_segment_config(settings: AppSettings) -> SegmentConfigResult:
 
         # client = setup_carla_client("Town10HD")
         client = settings.client
@@ -294,7 +276,7 @@ def generate_simple_segment(map: str, segment_path: Path, segment_nr_in_map: int
         world.set_pedestrians_cross_factor(0.1)
         sensor_data_queue = Queue()
         # TODO: Check sensor positions
-        sensor_map = setup_sensors(
+        sensor_map = spawn_sensors(
             world,
             ego_vehicle,
             sensor_data_queue=sensor_data_queue,
@@ -304,7 +286,23 @@ def generate_simple_segment(map: str, segment_path: Path, segment_nr_in_map: int
                     "blueprint": SensorBlueprints.CAMERA_RGB,
                     "location": (2, 0, 1),
                     "rotation": (0, 0, 0),
-                    "attributes": {"image_size_x": "1164", "image_size_y": "874"},
+                    "attributes": {
+                        "image_size_x": "1928",
+                        "image_size_y": "1208",
+                        "fov": "40",  # What they used in their CARLA bridge
+                        "sensor_tick": str(1 / 20),
+                    },
+                },
+                "wide_camera": {
+                    "blueprint": SensorBlueprints.CAMERA_RGB,
+                    "location": (2, 0, 1),
+                    "rotation": (0, 0, 0),
+                    "attributes": {
+                        "image_size_x": "1928",
+                        "image_size_y": "1208",
+                        "fov": "120",  # What they used in their CARLA bridge
+                        "sensor_tick": str(1 / 20),
+                    },
                 },
             },
         )
@@ -319,7 +317,13 @@ def generate_simple_segment(map: str, segment_path: Path, segment_nr_in_map: int
         configure_traffic_lights(world)
 
         # client.get_trafficmanager().set_global_distance_to_leading_vehicle()
-        data_dict: DataDict = {"location": [], "rotation": [], "images": []}
+        data_dict: DataDict = {
+            "location": [],
+            "rotation": [],
+            "images": [],
+            "wide_images": [],
+            "velocity": [],
+        }
 
         context = AppContext(
             client=client,
@@ -351,9 +355,7 @@ def get_some(i, j, k):
     return f"Chunk_{i}/Batch_{j}/Segment_{k}"
 
 
-def choose_segments(
-    all_segments: List[FullSegment], progress: int
-) -> List[FullSegment]:
+def choose_segments(all_segments: List[Segment], progress: int) -> List[Segment]:
     print("progress", progress)
     print("all_segments", len(all_segments))
     if progress == len(all_segments):

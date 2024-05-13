@@ -8,7 +8,7 @@ import torch
 from PIL import Image
 
 from carla_experiments.carla_utils.setup import game_loop_environment, initialize_carla
-from carla_experiments.carla_utils.spawn import spawn_ego_vehicle, spawn_sensor
+from carla_experiments.carla_utils.spawn import spawn_ego_vehicle, spawn_single_sensor
 from carla_experiments.carla_utils.types_carla_utils import SensorBlueprints
 from carla_experiments.datasets.simple_dataset import get_simple_val_test_transforms
 from carla_experiments.models.simple import SimpleLineFollowingB0
@@ -103,14 +103,14 @@ def setup_camera(world: carla.World, ego_vehicle: carla.Vehicle) -> carla.Sensor
         control = carla.VehicleControl(throttle, steer, brake)
         ego_vehicle.apply_control(control)
 
-    rgb_cam = spawn_sensor(
+    rgb_cam = spawn_single_sensor(
         world,
         SensorBlueprints.CAMERA_RGB,
         location=(2, 0, 1),
         rotation=(0, 0, 0),
         attach_to=ego_vehicle,
         modify_blueprint_fn=set_camera_attributes,
-        on_measurement_received=control_vehicle_from_image,
+        on_sensor_data_received=control_vehicle_from_image,
     )
     time.sleep(0.1)
     return rgb_cam

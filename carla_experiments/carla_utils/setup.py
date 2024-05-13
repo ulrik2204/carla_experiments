@@ -1,41 +1,19 @@
 import sys
-import time
-from functools import wraps
 from pathlib import Path
-from queue import Empty, Queue
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    List,
-    Mapping,
-    Optional,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-    cast,
-)
+from queue import Empty
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, TypeVar, Union
 
 import carla
 import numpy as np
 from PIL import Image
 
-from carla_experiments.carla_utils.constants import AttributeDefaults, SensorBlueprints
-from carla_experiments.carla_utils.spawn import spawn_sensor
 from carla_experiments.carla_utils.types_carla_utils import (
-    Batch,
     BatchContext,
     CarlaTask,
-    DecoratedBatch,
-    DecoratedSegment,
     FlexiblePath,
-    FullSegment,
-    FullSegmentConfig,
     SaveItems,
     Segment,
-    SensorBlueprint,
-    SensorConfig,
+    SegmentConfig,
 )
 
 TSensorMap = TypeVar("TSensorMap", bound=Mapping[str, Any])
@@ -52,70 +30,6 @@ def _flexible_path_to_path(flexible_path: Optional[FlexiblePath]) -> Path:
         return flexible_path
     else:
         raise ValueError(f"Unknown path type {type(flexible_path)}")
-
-
-def _create_blueprint_changer(
-    attributes: Mapping[str, str],
-    defaults: Mapping[str, str],
-):
-    def inner(blueprint: carla.ActorBlueprint):
-        for key, value in defaults.items():
-            blueprint.set_attribute(key, value)
-        for key, value in attributes.items():
-            blueprint.set_attribute(key, value)
-        return blueprint
-
-    return inner
-
-
-def _handle_sensor_setup(
-    world: carla.World,
-    ego_vehicle: carla.Vehicle,
-    sensor_id: str,
-    sensor_config: SensorConfig,
-    sensor_data_queue: Queue,
-) -> carla.Sensor:
-    sensor_blueprint = sensor_config["blueprint"]
-    attributes = sensor_config["attributes"]
-
-    modify_camera_bp = _create_blueprint_changer(attributes, AttributeDefaults.CAMERA)
-    modify_lidar_bp = _create_blueprint_changer(attributes, AttributeDefaults.LIDAR)
-    modify_radar_bp = _create_blueprint_changer(attributes, AttributeDefaults.RADAR)
-    modify_imu_bp = _create_blueprint_changer(attributes, AttributeDefaults.IMU)
-    modify_gnss_bp = _create_blueprint_changer(attributes, AttributeDefaults.GNSS)
-
-    modify_blueprint_fn_map: Dict[
-        SensorBlueprint[Any],
-        Optional[Callable[[carla.ActorBlueprint], carla.ActorBlueprint]],
-    ] = {
-        SensorBlueprints.CAMERA_RGB: modify_camera_bp,
-        SensorBlueprints.CAMERA_DEPTH: modify_camera_bp,
-        SensorBlueprints.CAMERA_DVS: modify_camera_bp,
-        SensorBlueprints.CAMERA_SEMANTIC_SEGMENTATION: modify_camera_bp,
-        SensorBlueprints.COLLISION: None,
-        SensorBlueprints.GNSS: modify_gnss_bp,
-        SensorBlueprints.IMU: modify_imu_bp,
-        SensorBlueprints.LANE_INVASION: None,
-        SensorBlueprints.OBSTACLE: None,
-        SensorBlueprints.LIDAR_RANGE: modify_lidar_bp,
-        SensorBlueprints.LIDAR_SEMANTIC_SEGMENTATION: modify_lidar_bp,
-        SensorBlueprints.RADAR_RANGE: modify_radar_bp,
-    }
-    if sensor_blueprint in modify_blueprint_fn_map:
-        modify_blueprint_fn = modify_blueprint_fn_map[sensor_blueprint]
-    else:
-        raise ValueError(f"Unknown sensor blueprint {sensor_blueprint}")
-
-    sensor = spawn_sensor(
-        world,
-        sensor_blueprint,
-        sensor_config["location"],
-        sensor_config["rotation"],
-        ego_vehicle,
-        modify_blueprint_fn=modify_blueprint_fn,
-        on_measurement_received=lambda data: sensor_data_queue.put((sensor_id, data)),
-    )
-    return sensor
 
 
 def setup_carla_client(map: Optional[str] = None, frame_rate: int = 20):
@@ -143,24 +57,6 @@ def setup_carla_client(map: Optional[str] = None, frame_rate: int = 20):
     settings.actor_active_distance = 2000
     world.apply_settings(settings)
     return client
-
-
-def setup_sensors(
-    world: carla.World,
-    ego_vehicle: carla.Vehicle,
-    sensor_data_queue: Queue,
-    return_sensor_map_type: Type[TSensorMap],
-    sensor_config: Mapping[str, SensorConfig],
-) -> TSensorMap:
-    sensor_map: Mapping[str, carla.Sensor] = {}
-    for sensor_id, config in sensor_config.items():
-        sensor = _handle_sensor_setup(
-            world, ego_vehicle, sensor_id, config, sensor_data_queue
-        )
-        sensor_map[sensor_id] = sensor
-    time.sleep(0.1)
-    world.tick()
-    return cast(return_sensor_map_type, sensor_map)
 
 
 TContext = TypeVar("TContext", bound=BatchContext)
@@ -248,11 +144,12 @@ def stop_actors(
     ]
 ):
     try:
-        if isinstance(actor, carla.Actor):
-            carla.command.DestroyActor(actor)  # type: ignore
-        elif isinstance(actor, carla.Sensor):
+
+        if isinstance(actor, carla.Sensor):
             actor.stop()
-            carla.command.DestroyActor(actor)  # type: ignore
+            actor.destroy()
+        elif isinstance(actor, carla.Actor):
+            actor.destroy()
         elif isinstance(actor, dict):
             for a in actor.values():
                 stop_actors(a)
@@ -296,140 +193,24 @@ def save_items_to_file(base_path: Path, items: SaveItems):
             break
 
 
-def create_batch_dataset(
-    batches: List[DecoratedBatch[TSettings]],
-    base_folder: FlexiblePath,
-    settings: TSettings,
-    on_batch_end: Optional[Callable[[], None]] = None,
-    on_segment_end: Optional[Callable[[], None]] = None,
-):
-    # This function is used to create a dataset from a list of batches
-    base_path = _flexible_path_to_path(base_folder)
-    for batch in batches:
-        batch(base_path, settings, on_segment_end=on_segment_end)
-        if on_batch_end is not None:
-            on_batch_end()
-
-
-def batch(batch_folder: FlexiblePath):
-    """Decorator for a batch function. A batch function is a function that
-        sets up a CARLA client and world, spawns an ego vehicle, and sets up sensors.
-        All segments in a batch share the same context created by the batch.
-
-
-
-    Args:
-        batch_folder (FlexiblePath): The folder to save the batch data in.
-
-    """
-
-    def decorator(func: Batch[TSettings]) -> DecoratedBatch[TSettings]:
-        # This is a function to also be able to group the data generation into batches
-        # Each batch is a collection of segments with certain world settings.
-        @wraps(func)
-        def inner(
-            base_path: Path,
-            settings: TSettings,
-            on_segment_end: Optional[Callable[[], None]] = None,
-        ) -> None:
-            batch_result = func(settings)
-            batch_path = _flexible_path_to_path(batch_folder)
-            full_base_path = base_path / batch_path
-            for segment in batch_result["segments"]:
-                segment(batch_result["context"], full_base_path)
-                if on_segment_end is not None:
-                    on_segment_end()
-            optionals = batch_result["options"]
-            on_exit = optionals["on_batch_end"] if "on_batch_end" in optionals else None
-            if on_exit:
-                on_exit(batch_result["context"])
-            print("Cleaning up actors...")
-            context = batch_result["context"]
-            stop_actors(context.actor_map)
-            stop_actors(context.sensor_map)
-
-        return inner
-
-    return decorator
-
-
-def segment(
-    frame_duration: int, segment_base_folder: Optional[FlexiblePath] = None
-) -> Callable[[Segment[TContext, Any]], DecoratedSegment[TContext]]:
-    """Decorator for a segment function. A segment function is a function that
-    creates a small segment of data, e.g. 60 seconds of driving. It is provided the
-    context by the batch, but the only thing it should change should be the things
-    like position of the ego vehicle, the weather or spawn actors. A segment should
-    not change the map or the world settings.
-
-    Args:
-        frame_duration (int): The number of frames to run the segment for.
-        This will be dependent on the frame rate.
-
-
-    Returns:
-        Callable[[Segment[TContext, TSensorDataMap]], DecoratedSegment[TContext]]: The decorator.
-    """
-
-    # This function is used to be able to group the data generation into segments
-    # Each segment is a snippet of any frame length. It is provided the client
-    # by the batch, but can itself also change the world settings, like the map
-    # and weather.
-    # Each segment has:
-    # - a configure stage (set up actors, sensors, etc.)
-    # - a run stage with tasks (running the game loop with its tasks)
-    # - a cleanup stage (clean up actors, sensors, etc.)
-    def decorator(
-        func: Segment[TContext, TSensorDataMap]
-    ) -> DecoratedSegment[TContext]:
-        @wraps(func)
-        def inner(context: TContext, batch_base_path: Path) -> None:
-            segment_result = func(context)
-            print("Starting segment")
-            tasks = segment_result["tasks"]
-            optionals = segment_result["options"]
-            segment_path = _flexible_path_to_path(segment_base_folder)
-            save_items_base_path = batch_base_path / segment_path
-            cleanup_actors = (
-                optionals["cleanup_actors"] if "cleanup_actors" in optionals else False
-            )
-            on_finish_save_files = (
-                optionals["on_finish_save_files"]
-                if "on_finish_save_files" in optionals
-                else None
-            )
-
-            on_exit = (
-                optionals["on_segment_end"] if "on_segment_end" in optionals else None
-            )
-
-            def on_end(ctx: TContext, save_files_base_path: Path):
-                if on_finish_save_files is not None:
-                    save_items = on_finish_save_files(ctx)
-                    save_items_to_file(save_files_base_path, save_items)
-                    # To make sure the files are written to disk before next step
-                if on_exit is not None:
-                    on_exit(ctx, save_files_base_path)
-
-            game_loop_segment(
-                context=context,
-                tasks=tasks,
-                on_finished=on_end,
-                max_frames=frame_duration,
-                save_files_base_path=save_items_base_path,
-                cleanup_actors=cleanup_actors,
-            )
-
-        return inner
-
-    return decorator
-
-
 def create_segment(
     frame_duration: Optional[int],
     segment_base_folder: Optional[FlexiblePath],
-    segment_config: FullSegmentConfig[TSettings, TContext, TSensorDataMap],
-) -> FullSegment:
+    segment_config: SegmentConfig[TSettings, TContext, TSensorDataMap],
+) -> Segment:
+    """Creates a segment function that can be run in a loop.
+    The segment is configued using the segment_config function.
+    The segment_config function is passed the settings, context and sensor data map
+    from the game loop.
+
+    Args:
+        frame_duration (Optional[int]): The durection of the segment in seconds.
+        segment_base_folder (Optional[FlexiblePath]): The base folder to save the segment files in.
+        segment_config (FullSegmentConfig[TSettings, TContext, TSensorDataMap]): The segment config function.
+
+    Returns:
+        Segment: The segment function.
+    """
 
     def inner(settings: TSettings) -> None:
         segment_result = segment_config(settings)
@@ -459,10 +240,20 @@ def create_segment(
 
 
 def generate_segment_dataset(
-    segments: List[FullSegment],
+    segments: List[Segment],
     settings: TSettings,
     after_segment_end: Optional[Callable[[TSettings], None]] = None,
 ):
+    """A function to run a list of segments.
+    The function just loops through the segments and calls them with
+    the settings.
+
+    Args:
+        segments (List[Segment]): The list of segments to be run.
+        settings (TSettings): The application settings.
+        after_segment_end (Optional[Callable[[TSettings], None]], optional):
+            Function to be called after a segment is done. Defaults to None.
+    """
     for segment in segments:
         segment(settings)
         if after_segment_end is not None:

@@ -156,6 +156,7 @@ def main_onnx():
         desire = np.zeros(
             (batch_size,) + SupercomboInputShapes.DESIRES, dtype=np.float32
         )
+        prev_desire = np.zeros(SupercomboInputShapes.DESIRES[1], dtype=np.float32)
         desire_state = INIT_DESIRE_STATE
         lane_change_prob = 0.0
 
@@ -169,7 +170,13 @@ def main_onnx():
                 lane_change_prob,
             )
             desire[:, :-1] = desire[:, 1:]
-            desire[:, -1] = get_desire_vector(desire_state["desire"])
+            current_desire_vector = get_desire_vector(desire_state["desire"])
+            current_desire_vector[0] = 0
+            # The current desire should not include previous desires,
+            # and each element at each index should be either 0 or 1
+            desire[:, -1] = np.where(
+                current_desire_vector - prev_desire > 0.99, current_desire_vector, 0
+            )
             inputs: SupercomboFullNumpyInputs = {
                 "big_input_imgs": partial_inputs["big_input_imgs"],
                 "input_imgs": partial_inputs["input_imgs"],
@@ -186,6 +193,7 @@ def main_onnx():
             features_buffer[:, -1] = parsed_pred["hidden_state"]
             prev_desired_curv[:, :-1] = prev_desired_curv[:, 1:]
             prev_desired_curv[:, -1] = parsed_pred["desired_curvature"]
+            prev_desire = current_desire_vector
 
             left_prob = parsed_pred["desire_state"][0, log.Desire.laneChangeLeft]
             right_prob = parsed_pred["desire_state"][0, log.Desire.laneChangeRight]
@@ -195,6 +203,7 @@ def main_onnx():
             # torch.save(inputs, "inputs.pt")
             # torch.save(parsed_pred, "output.pt")
             # torch.save(gt, "ground_truth.pt")
+            print("desire", desire)
             loss = total_loss(parsed_pred, gt)  # type: ignore
             # print("loss", loss)
             # print("shapes\n", get_dict_shape(parsed_pred))

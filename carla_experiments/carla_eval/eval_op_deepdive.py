@@ -16,14 +16,14 @@ from carla_experiments.carla_utils.setup import (
     BatchContext,
     create_segment,
     setup_carla_client,
-    setup_sensors,
 )
 from carla_experiments.carla_utils.spawn import (
     spawn_ego_vehicle,
+    spawn_sensors,
     spawn_vehicle_bots,
     spawn_walker_bots,
 )
-from carla_experiments.carla_utils.types_carla_utils import FullSegmentConfigResult
+from carla_experiments.carla_utils.types_carla_utils import SegmentConfigResult
 from carla_experiments.common.position_and_rotation import (
     carla_location_to_ecef,
     carla_rotation_to_ecef_frd_quaternion,
@@ -324,7 +324,7 @@ def configure_traffic_lights(world: carla.World):
 
 
 def generate_infinite_segment(map: str):
-    def infinite_segment_config(settings: AppSettings) -> FullSegmentConfigResult:
+    def infinite_segment_config(settings: AppSettings) -> SegmentConfigResult:
 
         # client = setup_carla_client("Town10HD")
         client = settings.client
@@ -359,7 +359,7 @@ def generate_infinite_segment(map: str):
         world.set_pedestrians_cross_factor(0.1)
         sensor_data_queue = Queue()
         # TODO: Check sensor positions
-        sensor_map = setup_sensors(
+        sensor_map = spawn_sensors(
             world,
             ego_vehicle,
             sensor_data_queue=sensor_data_queue,

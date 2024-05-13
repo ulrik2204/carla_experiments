@@ -4,7 +4,10 @@ import cv2
 import numpy as np
 from matplotlib import pyplot as plt
 
-from carla_experiments.common.types_common import SupercomboOutputLogged
+from carla_experiments.common.types_common import (
+    SupercomboFullOutput,
+    SupercomboOutputLogged,
+)
 from carla_experiments.common.utils_op_deepdive import denormalize, img_from_device
 
 
@@ -100,7 +103,7 @@ def draw_path(
 def visualize_trajectory(
     prev_input_img: np.ndarray,
     current_input_img: np.ndarray,
-    pred_outputs: SupercomboOutputLogged,
+    pred_outputs: SupercomboFullOutput,
     gt: SupercomboOutputLogged,
     metric: float,
     save_file: str,

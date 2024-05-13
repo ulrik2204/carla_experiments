@@ -22,9 +22,9 @@ if [ $# -eq 2 ]; then
 else
     progress_file="progress-$this_time.txt"
 fi
-comma_folder="$root_folder/carla2k19"
+comma_folder="$root_folder/comma2k19"
 
-max_attempts=100
+max_attempts=2300
 attempt_num=1
 
 while true; do

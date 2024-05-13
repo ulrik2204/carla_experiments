@@ -99,3 +99,40 @@ def frames_to_video(
     # delete the mp4 file
     if delete_intermediate_mp4_file:
         output_file_mp4.unlink()
+
+
+class ProgressHandler:
+
+    def __init__(
+        self, progress_file_path: str, segments_relative_paths: List[str]
+    ) -> None:
+        # Progress denotes the index of the last completed task
+        self.progress = -1
+        self.tasklist = segments_relative_paths
+        self.filepath = progress_file_path
+        if not os.path.exists(progress_file_path):
+            return
+        print("File exists resuming from file.")
+        print("filepath", progress_file_path)
+        with open(progress_file_path, "r") as f:
+            done_elements = f.readlines()
+            last_index = len(done_elements) - 1
+            current_task = segments_relative_paths[last_index].strip()
+            last_done_element = done_elements[last_index].strip()
+            if current_task == last_done_element:
+                self.progress = last_index
+            else:
+                raise ValueError(
+                    f"Tasks in file do not match tasklist. {current_task} != {last_done_element}"
+                )
+
+    def get_progress(self) -> int:
+        return self.progress
+
+    def update_progress(self) -> None:
+        self.progress += 1
+        with open(self.filepath, "a") as f:
+            f.write(f"{self.tasklist[self.progress]}\n")
+
+    def is_finished(self):
+        return self.progress == len(self.tasklist) - 1

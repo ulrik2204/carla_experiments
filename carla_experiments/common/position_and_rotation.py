@@ -315,3 +315,8 @@ def euler2quat(eulers):
 
 def euler2rot(eulers):
     return quat2rot(euler2quat(eulers))
+
+
+def carla_vector_to_ecef(vector: carla.Vector3D):
+    # It is not this easy
+    return np.array([vector.x, -vector.y, vector.z])
