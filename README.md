@@ -31,5 +31,7 @@ Data sources to recreate in CARLA from the Comma 2k19 dataset:
 ## Video of OP-Deepdive on Comma2k19 sample
 
 Below is a video of an OP-Deepdive model trained on Comma2k19 for 99 epochs evaluated qualitatively on a sample from the Comma2k19 dataset. As seen in the video, the model's performance is not good and predicts the same trajectory for each frame, only changing its predicted speed. This is contrary to what was reported for OP-Deepdive. 
-![Video](./new_comma2k19_1_on_comma.mp4)
-
+<video width="1280" height="720" controls>
+    <source src="./new_comma2k19_1_on_comma.mp4" type="video/mp4">
+    Your broser does not support the video tag
+</video>
