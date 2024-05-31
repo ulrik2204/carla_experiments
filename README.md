@@ -42,6 +42,12 @@ Below is a video of the OP-Deepdive model being deployed in the CARLA simulator 
 https://github.com/ulrik2204/carla_experiments/assets/65228579/c01837e2-b390-493c-8df8-d307fef653ea
 
 
+## Video of Supercombo on the Openpilot dataset
+
+
+https://github.com/ulrik2204/carla_experiments/assets/65228579/ce2861ee-16ca-47cb-a4b4-b3ef557de60a
+
+
 
 
 
