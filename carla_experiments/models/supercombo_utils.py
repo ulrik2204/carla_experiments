@@ -2,7 +2,7 @@ import itertools
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Mapping, Tuple, Type, TypeVar, Union, cast
+from typing import Any, Dict, Mapping, Optional, Tuple, Type, TypeVar, Union, cast
 
 import numpy as np
 import onnx
@@ -69,13 +69,14 @@ def torch_dict_to_numpy(inputs, dtype=np.float32) -> Dict[str, np.ndarray]:
 
 def new_parse_mdn(
     raw: torch.Tensor, in_N: int, out_N: int, out_shape: Tuple[int, ...]
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
     device = raw.device
     raw = raw.reshape((raw.shape[0], max(in_N, 1), -1))
 
     n_values = (raw.shape[2] - out_N) // 2
     pred_mu = raw[:, :, :n_values]
     pred_std = torch.exp(raw[:, :, n_values : 2 * n_values])
+    prob = None
 
     if in_N > 1:
         weights = torch.zeros(
@@ -102,6 +103,7 @@ def new_parse_mdn(
                 idxs = torch.argsort(weights[fidx, :, hidx], descending=True)
                 pred_mu_final[fidx, hidx] = pred_mu[fidx, idxs[0]]
                 pred_std_final[fidx, hidx] = pred_std[fidx, idxs[0]]
+        prob = weights.max()
     else:
         pred_mu_final = pred_mu
         pred_std_final = pred_std
@@ -117,7 +119,7 @@ def new_parse_mdn(
         )
     final = pred_mu_final.reshape(final_shape)
     final_stds = pred_std_final.reshape(final_shape)
-    return final, final_stds
+    return final, final_stds, prob
 
 
 TOut = TypeVar("TOut")
@@ -162,23 +164,23 @@ def parse_supercombo_outputs(
         output_type=FirstSliceSupercomboOutput,
     )
     # Reshaping the outputs to their values and stds
-    plan, plan_stds = new_parse_mdn(outputs_sliced["plan"], 5, 1, (33, 15))
-    lane_lines, lane_line_stds = new_parse_mdn(
+    plan, plan_stds, plan_probs = new_parse_mdn(outputs_sliced["plan"], 5, 1, (33, 15))
+    lane_lines, lane_line_stds, _ = new_parse_mdn(
         outputs_sliced["lane_lines"], 0, 0, (4, 33, 2)
     )
-    road_edges, road_edge_stds = new_parse_mdn(
+    road_edges, road_edge_stds, _ = new_parse_mdn(
         outputs_sliced["road_edges"], 0, 0, (2, 33, 2)
     )
-    pose, pose_stds = new_parse_mdn(outputs_sliced["pose"], 0, 0, (6,))
-    road_transform, road_transform_stds = new_parse_mdn(
+    pose, pose_stds, _ = new_parse_mdn(outputs_sliced["pose"], 0, 0, (6,))
+    road_transform, road_transform_stds, _ = new_parse_mdn(
         outputs_sliced["road_transform"], 0, 0, (6,)
     )
-    sim_pose, sim_pose_stds = new_parse_mdn(outputs_sliced["sim_pose"], 0, 0, (6,))
-    wide_from_device_euler, wide_from_device_euler_stds = new_parse_mdn(
+    sim_pose, sim_pose_stds, _ = new_parse_mdn(outputs_sliced["sim_pose"], 0, 0, (6,))
+    wide_from_device_euler, wide_from_device_euler_stds, _ = new_parse_mdn(
         outputs_sliced["wide_from_device_euler"], 0, 0, (3,)
     )
-    lead, lead_stds = new_parse_mdn(outputs_sliced["lead"], 2, 3, (6, 4))
-    desired_curvature, _ = new_parse_mdn(
+    lead, lead_stds, _ = new_parse_mdn(outputs_sliced["lead"], 2, 3, (6, 4))
+    desired_curvature, _, _ = new_parse_mdn(
         outputs_sliced["desired_curvature"], 0, 0, (1,)
     )
 
@@ -205,6 +207,7 @@ def parse_supercombo_outputs(
     plan_dict: PlanFull = {
         "position": plan_sliced["position"],
         "position_stds": plan_stds_sliced["position"],
+        "position_prob": plan_probs or torch.tensor(0.0),
         "velocity": plan_sliced["position"],
         "velocity_stds": plan_stds_sliced["position"],
         "acceleration": plan_sliced["acceleration"],
@@ -266,6 +269,11 @@ def total_loss(
     pred: Union[SupercomboFullOutput, Dict],
     ground_truth: Union[SupercomboOutputLogged, Dict],
 ) -> float:
+    # only calculate the loss for the predicted trajectory
+    p = pred["plan"]["position"]  # (1, 33, 3)
+    gt = ground_truth["plan"]["position"]  # (1, 33, 3)
+    # l2 loss only of x and y axis
+    return float(torch.mean(torch.pow(p[:, :, :2] - gt[:, :, :2], 2)))
     diffs = []
     for key, gt_value in ground_truth.items():
         pred_value = pred[key]

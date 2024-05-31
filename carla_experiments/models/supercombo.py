@@ -2,7 +2,7 @@ import sys
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Literal, cast
+from typing import List, Literal, cast
 
 import numpy as np
 import torch
@@ -22,6 +22,8 @@ from carla_experiments.common.utils_op_deepdive import calibrate_image
 from carla_experiments.common.utils_openpilot import (
     DEVICE_CAMERAS,
     DeviceCameraConfig,
+    warp_image,
+    warp_image_as_op_deepdive,
     yuv_6_channel_to_rgb,
 )
 from carla_experiments.common.visualization import visualize_trajectory
@@ -65,55 +67,47 @@ class SupercomboONNX:
 
 
 def transform_image(
-    images: torch.Tensor,
+    images: List[np.ndarray],
     senv: SupercomboEnv,
     image_type: Literal["narrow", "wide"],
-) -> torch.Tensor:
+) -> List[np.ndarray]:
     # TODO: Implement this correctly
-    return images
     imgs = []
-    print("images shapes before trans", images.shape)
-    for i in range(images.shape[0]):
-        image = images[i]
-        # plt.imsave("before.png", image.cpu().to(dtype=torch.uint8).numpy())
-        # sys.exit(0)
-        print("senv", get_dict_shape(senv))
+    for i, image in enumerate(images):
         env_indexed = supercombo_tensors_at_idx(senv, i, batched=False)
         device_type = str(env_indexed["device_type"])
         sensor = str(env_indexed["sensor"])
         dc: DeviceCameraConfig = DEVICE_CAMERAS.get((device_type, sensor), None)  # type: ignore
         if dc is None:
             raise ValueError(f"Unknown device_type: {device_type} and sensor: {sensor}")
-        print("device_type", device_type)
         rpy_calib = env_indexed["rpy_calib"]
-        extrinsic_matrix = euler2rot(rpy_calib.cpu().numpy())
-        intrinsic_matrix = euler2rot(
-            dc.fcam.intrinsics if image_type == "narrow" else dc.ecam.intrinsics
-        )
+        # Is rpy calib really the extrinsic rotation
+        # Additionally need translation matrix - speed?
+        # extrinsic_matrix = euler2rot(rpy_calib.cpu().numpy())
+        device_from_calib_euler = rpy_calib.cpu().numpy()
 
         if image_type == "narrow":
-            some = calibrate_image(
-                image.to(dtype=torch.uint8).cpu().numpy(),
-                extrinsic_matrix,
-                intrinsic_matrix,
+            some = warp_image(
+                image,
+                device_from_calib_euler,
             )
             imgs.append(some)
         elif image_type == "wide":
-            some = calibrate_image(
-                image.to(dtype=torch.uint8).cpu().numpy(),
-                rpy_calib.cpu().numpy(),
-                intrinsic_matrix,
+            some = warp_image(
+                image,
+                device_from_calib_euler,
+                wide_camera=True,
+                bigmodel_frame=True,
             )
-            print("some shape", some.shape)
+            # print("some shape", some.shape)
             imgs.append(some)
         else:
             raise ValueError(f"Unknown image_type: {image_type}")
-        print("some\n", some)
-        plt.imsave("some.png", some.to(dtype=torch.uint8).cpu().numpy())
-        sys.exit(0)
-    res = torch.stack(imgs)
-    print("res shape", res.shape)
-    return res
+        # print("some\n", some)
+        # plt.imsave("some.png", some)
+        # sys.exit(0)
+    # print("res shape", res.shape)
+    return imgs
 
 
 def main_onnx():
@@ -130,7 +124,7 @@ def main_onnx():
     transform_narrow = partial(transform_image, image_type="narrow")
     transform_wide = partial(transform_image, image_type="wide")
     dataset = Comma3xDataset(
-        folder="/home/ulrikro/datasets/CommaAI/2024_02_28_Orkdal",
+        folder="/home/ulrikro/datasets/CommaAI/2024_03_27_Are",
         segment_start_idx=segment_start_idx,
         segment_end_idx=segment_end_idx,
         narrow_image_transforms=transform_narrow,
@@ -200,14 +194,17 @@ def main_onnx():
             # Updating lane_change_prob
             lane_change_prob = float(left_prob + right_prob)
 
-            # torch.save(inputs, "inputs.pt")
-            # torch.save(parsed_pred, "output.pt")
-            # torch.save(gt, "ground_truth.pt")
-            print("desire", desire)
             loss = total_loss(parsed_pred, gt)  # type: ignore
-            # print("loss", loss)
-            # print("shapes\n", get_dict_shape(parsed_pred))
-            # return
+            untransformed_narrow_imgs = partial_inputs["untransformed_narrow_imgs"]
+            original_input_img = (
+                yuv_6_channel_to_rgb(
+                    torch.tensor(untransformed_narrow_imgs).permute(0, 2, 3, 1)
+                )
+                .squeeze(0)
+                .to(dtype=torch.uint8)
+                .cpu()
+                .numpy()
+            )
 
             prev_input_img = (
                 yuv_6_channel_to_rgb(
@@ -231,13 +228,15 @@ def main_onnx():
                 .cpu()
                 .numpy()
             )
+            image_id = (i_batch + 1) * segment_length + i
             visualize_trajectory(
+                original_input_img,
                 prev_input_img,
                 current_input_img,
                 parsed_pred,
                 gt,
                 loss,
-                (save_path / f"pred_{i_batch}_{i}.png").as_posix(),
+                (save_path / f"{image_id:06}.png").as_posix(),
             )
 
 
@@ -255,6 +254,7 @@ def main_plot():
     )  # .squeeze(0).transpose(1, 2, 0)
 
     visualize_trajectory(
+        current_input_img.cpu().numpy(),
         prev_input_img.cpu().numpy(),
         current_input_img.cpu().numpy(),
         output,

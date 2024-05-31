@@ -9,6 +9,7 @@ from carla_experiments.common.types_common import (
     SupercomboOutputLogged,
 )
 from carla_experiments.common.utils_op_deepdive import denormalize, img_from_device
+from carla_experiments.common.utils_openpilot import tici_fcam_intrinsics
 
 
 # From https://github.com/OpenDriveLab/Openpilot-Deepdive
@@ -36,12 +37,12 @@ def draw_trajectory_on_ax(
     max_conf = max([conf for conf in confs if conf != 1])
 
     for idx, (trajectory, conf) in enumerate(zip(trajectories, confs)):
-        label = "gt" if conf == 1 else "pred%d (%.3f)" % (idx, conf)
+        label = "original" if conf == 1 else "pred%d" % (idx)
         alpha = 1.0
         if transparent:
             alpha = 1.0 if conf == max_conf else np.clip(conf, 0.1, None)
         plot_args = dict(label=label, alpha=alpha, linewidth=2 if alpha == 1.0 else 1)
-        if label == "gt":
+        if label == "original":
             plot_args["color"] = "#d62728"
         ax.plot(
             trajectory[:, 1],  # - for nuscenes and + for comma 2k19
@@ -60,12 +61,12 @@ def draw_trajectory_on_ax(
 
 def draw_path(
     device_path,
-    img: np.ndarray,
-    width: float = 1,
-    height: float = 1.2,
-    fill_color: Optional[Tuple[int, int, int]] = (128, 0, 255),
-    line_color: Optional[Tuple[int, int, int]] = (0, 255, 0),
-    denormalize_imgs: bool = False,
+    img,
+    width=1.0,
+    height=1.2,
+    fill_color=(128, 0, 255),
+    line_color=(0, 255, 0),
+    intrinsics: Optional[np.ndarray] = None,
 ):
     # device_path: N, 3
     device_path_l = device_path + np.array([0, 0, height])
@@ -75,12 +76,12 @@ def draw_path(
 
     img_points_norm_l = img_from_device(device_path_l)
     img_points_norm_r = img_from_device(device_path_r)
+    h = img.shape[0]
+    w = img.shape[1]
+    print("h, w", h, w)
 
-    img_pts_l = img_points_norm_l
-    img_pts_r = img_points_norm_r
-    if denormalize_imgs:
-        img_pts_l = denormalize(img_pts_l)
-        img_pts_r = denormalize(img_pts_r)
+    img_pts_l = denormalize(img_points_norm_l, intrinsics=intrinsics, height=h, width=w)
+    img_pts_r = denormalize(img_points_norm_r, intrinsics=intrinsics, height=h, width=w)
     # filter out things rejected along the way
     valid = np.logical_and(
         np.isfinite(img_pts_l).all(axis=1), np.isfinite(img_pts_r).all(axis=1)
@@ -101,6 +102,7 @@ def draw_path(
 
 
 def visualize_trajectory(
+    original_img: np.ndarray,
     prev_input_img: np.ndarray,
     current_input_img: np.ndarray,
     pred_outputs: SupercomboFullOutput,
@@ -108,7 +110,15 @@ def visualize_trajectory(
     metric: float,
     save_file: str,
 ) -> None:
+    size = (1928, 1208)
+    original_img = cv2.resize(original_img, size)
+
     pred_plan = pred_outputs["plan"]["position"].squeeze()
+    plan_conf = float(pred_outputs["plan"]["position_prob"].item())
+    height = 1.2
+    width = 1.0
+    # height = gt["road_transform"][0, 2].item()
+    # print("height", height)
     # print("pred plan size", pred_plan.shape)
     gt_plan = gt["plan"]["position"].squeeze()
     # pred_conf = pred_outputs["plan"]["position_stds"]
@@ -133,35 +143,34 @@ def visualize_trajectory(
     ax2.axis("off")
 
     trajectories = [pred_plan.cpu().numpy(), gt_plan.cpu().numpy()]
-    # print("len trajectories", len(trajectories))
-    # trajectories = list(labels + 0.8) + list(labels)  # TODO: remove
-    confs = [0.5] + [1]
-    # confs = [0.5, 1]  # TODO: Remove
-    # print("distance", calculate_distances(np.squeeze(labels.numpy())))
+    confs = [plan_conf] + [1]
     ax3 = draw_trajectory_on_ax(ax3, trajectories, confs, ylim=(0, 200))
     ax3.set_title("Mean L2: %.2f" % metric)
     ax3.grid()
 
-    overlay = current_input_img.copy()
+    overlay = original_img.copy()
+    norm_trajectory = trajectories[0]
     draw_path(
-        pred_plan,
+        norm_trajectory,
         overlay,
-        width=1,
-        height=1.2,
+        width=width,
+        height=height,
         fill_color=(255, 255, 255),
         line_color=(0, 255, 0),
+        intrinsics=tici_fcam_intrinsics,
     )
-    current_input_img = 0.5 * current_input_img + 0.5 * overlay
+    original_img = 0.5 * original_img + 0.5 * overlay
     draw_path(
-        pred_plan,
-        current_input_img,
-        width=1,
-        height=1.2,
+        norm_trajectory,
+        original_img,
+        width=width,
+        height=height,
         fill_color=None,
         line_color=(0, 255, 0),
+        intrinsics=tici_fcam_intrinsics,
     )
 
-    ax4.imshow(current_input_img.astype(np.uint8))
+    ax4.imshow(original_img.astype(np.uint8))
     ax4.set_title("project on current frame")
     ax4.axis("off")
 

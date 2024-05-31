@@ -3,9 +3,18 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 import torch
+from matplotlib import pyplot as plt
 
+from carla_experiments.common.camera import (
+    eon_fcam_intrinsics,
+    tici_ecam_intrinsics,
+    tici_fcam_intrinsics,
+)
 from carla_experiments.common.position_and_rotation import euler2rot
-from carla_experiments.common.utils_op_deepdive import VIEW_FRAME_FROM_DEVICE_FRAME
+from carla_experiments.common.utils_op_deepdive import (
+    VIEW_FRAME_FROM_DEVICE_FRAME,
+    calibration,
+)
 
 
 def get_view_frame_from_road_frame(roll, pitch, yaw, height):
@@ -87,47 +96,89 @@ calib_from_medmodel = np.linalg.inv(medmodel_frame_from_calib_frame[:, :3])
 calib_from_sbigmodel = np.linalg.inv(sbigmodel_frame_from_calib_frame[:, :3])
 
 
-# This function is verified to give similar results to xx.uncommon.utils.transform_img
+# # This function is verified to give similar results to xx.uncommon.utils.transform_img
+# def get_warp_matrix(
+#     device_from_calib_euler: np.ndarray,  # extrinsic?
+#     intrinsics: np.ndarray,
+#     bigmodel_frame: bool = False,
+# ) -> np.ndarray:
+#     calib_from_model = calib_from_sbigmodel if bigmodel_frame else calib_from_medmodel
+#     device_from_calib = euler2rot(device_from_calib_euler)
+#     camera_from_calib = intrinsics @ VIEW_FRAME_FROM_DEVICE_FRAME @ device_from_calib
+#     warp_matrix: np.ndarray = camera_from_calib @ calib_from_model
+#     return warp_matrix
+
+
 def get_warp_matrix(
     device_from_calib_euler: np.ndarray,
-    intrinsics: np.ndarray,
+    wide_camera: bool = False,
     bigmodel_frame: bool = False,
 ) -> np.ndarray:
+    tici = True
+    if tici and wide_camera:
+        cam_intrinsics = tici_ecam_intrinsics
+    elif tici:
+        cam_intrinsics = tici_fcam_intrinsics
+    else:
+        cam_intrinsics = eon_fcam_intrinsics
+
     calib_from_model = calib_from_sbigmodel if bigmodel_frame else calib_from_medmodel
     device_from_calib = euler2rot(device_from_calib_euler)
-    camera_from_calib = intrinsics @ VIEW_FRAME_FROM_DEVICE_FRAME @ device_from_calib
+    camera_from_calib = (
+        cam_intrinsics @ VIEW_FRAME_FROM_DEVICE_FRAME @ device_from_calib
+    )
     warp_matrix: np.ndarray = camera_from_calib @ calib_from_model
     return warp_matrix
 
 
+once = True
+
+
+def warp_image_as_op_deepdive(img: np.ndarray):
+    global once
+    # This expects (874, 1164, 3) uint8
+    if once:
+        print("img shape", img.shape)
+        plt.imsave("first_input.png", img)
+    img = cv2.resize(img, (1164, 874))
+    warp_matrix = calibration(
+        extrinsic_matrix=np.array(
+            [[0, -1, 0, 0], [0, 0, -1, 1.22], [1, 0, 0, 0], [0, 0, 0, 1]]
+        ),
+        cam_intrinsics=np.array([[910, 0, 582], [0, 910, 437], [0, 0, 1]]),
+        device_frame_from_road_frame=np.hstack(
+            (np.diag([1, -1, -1]), [[0], [0], [1.22]])
+        ),
+    )
+    im = cv2.warpPerspective(
+        src=img,
+        M=warp_matrix,
+        dsize=(512, 256),
+        flags=cv2.WARP_INVERSE_MAP,
+    )
+    if once:
+        print("warped shape", im.shape)
+        print("warped", im)
+        plt.imsave("warped.png", im)
+        once = False
+    return np.array(im)
+
+
 def warp_image(
-    img: torch.Tensor,  # [256, 512, 3] RGB image
+    img: np.ndarray,
     device_from_calib_euler: np.ndarray,
-    intrinsics: np.ndarray,
+    wide_camera: bool = False,
     bigmodel_frame: bool = False,
-) -> torch.Tensor:
-    warp_matrix = get_warp_matrix(device_from_calib_euler, intrinsics, bigmodel_frame)
-    # warp_matrix = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float32)
+) -> np.ndarray:
+    warp_matrix = get_warp_matrix(device_from_calib_euler, wide_camera, bigmodel_frame)
 
-    print("img dtype", img.dtype)
-    print("img shape", img)
-
-    print("warp matrix\n", warp_matrix)
-    nump = img.to(dtype=torch.uint8).cpu().numpy()
-    print("nump shape", nump.shape, "\n", nump)
     war = cv2.warpPerspective(
-        nump,
+        img,
         warp_matrix,
         (512, 256),
-        # flags=cv2.WARP_INVERSE_MAP,
+        flags=cv2.WARP_INVERSE_MAP,
     )
-    print("warp", war.dtype, "\n", war)
-    print("war.shape")
-    return torch.tensor(
-        war,
-        device=img.device,
-        dtype=img.dtype,
-    )
+    return np.array(war)
 
 
 @dataclass(frozen=True)

@@ -9,6 +9,7 @@ class SupercomboPartialNumpyInput(TypedDict):
     lateral_control_params: np.ndarray  # shape: [num_imgs, 2]
     input_imgs: np.ndarray  # shape: [num_imgs, 12, 128, 256]
     big_input_imgs: np.ndarray  # shape: [num_imgs, 12, 128, 256]
+    untransformed_narrow_imgs: np.ndarray  # shape: [num_imgs, 12, 128, 256]
 
 
 class SupercomboPartialTorchInput(TypedDict):
@@ -16,6 +17,7 @@ class SupercomboPartialTorchInput(TypedDict):
     lateral_control_params: torch.Tensor  # shape: [num_imgs, 2]
     input_imgs: torch.Tensor  # shape: [num_imgs, 12, 128, 256]
     big_input_imgs: torch.Tensor  # shape: [num_imgs, 12, 128, 256]
+    untransformed_narrow_imgs: torch.Tensor  # shape: [num_imgs, 12, 128, 256]
 
 
 class SupercomboFullNumpyInputs(TypedDict):
@@ -116,6 +118,7 @@ class SupercomboOutputLogged(TypedDict):
 class PlanFull(TypedDict):
     position: torch.Tensor  # Shape([num_imgs, 33, 3])
     position_stds: torch.Tensor  # Shape([num_imgs, 33, 3])
+    position_prob: torch.Tensor  # Shape([num_imgs, 1])
     velocity: torch.Tensor  # Shape([num_imgs, 33, 3])
     velocity_stds: torch.Tensor  # Shape([num_imgs, 33, 3])
     acceleration: torch.Tensor  # Shape([num_imgs, 33, 3])

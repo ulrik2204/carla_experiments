@@ -1,3 +1,5 @@
+from typing import Optional
+
 import cv2
 import matplotlib
 import numpy as np
@@ -75,6 +77,7 @@ T_IDX = np.linspace(0, 10, num=NUM_PTS)
 
 
 def calibration(extrinsic_matrix, cam_intrinsics, device_frame_from_road_frame=None):
+
     if device_frame_from_road_frame is None:
         device_frame_from_road_frame = np.hstack(
             (np.diag([1, -1, -1]), [[0], [0], [1.51]])
@@ -280,17 +283,20 @@ def normalize(img_pts):
     return img_pts_normalized[:, :2].reshape(input_shape)
 
 
-def denormalize(img_pts):
+def denormalize(img_pts, intrinsics: Optional[np.ndarray] = None, width=W, height=H):
     # denormalizes image coordinates
     # accepts single pt or array of pts
+    print("denormalize: width, height", width, height)
+    if intrinsics is None:
+        intrinsics = eon_intrinsics
     img_pts = np.array(img_pts)
     input_shape = img_pts.shape
     img_pts = np.atleast_2d(img_pts)
     img_pts = np.hstack((img_pts, np.ones((img_pts.shape[0], 1))))
-    img_pts_denormalized = eon_intrinsics.dot(img_pts.T).T
-    img_pts_denormalized[img_pts_denormalized[:, 0] > W] = np.nan
+    img_pts_denormalized = intrinsics.dot(img_pts.T).T
+    img_pts_denormalized[img_pts_denormalized[:, 0] > width] = np.nan
     img_pts_denormalized[img_pts_denormalized[:, 0] < 0] = np.nan
-    img_pts_denormalized[img_pts_denormalized[:, 1] > H] = np.nan
+    img_pts_denormalized[img_pts_denormalized[:, 1] > height] = np.nan
     img_pts_denormalized[img_pts_denormalized[:, 1] < 0] = np.nan
     return img_pts_denormalized[:, :2].reshape(input_shape)
 

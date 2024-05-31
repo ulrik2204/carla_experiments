@@ -63,7 +63,7 @@ class RlogImportantData:
 
 def load_video(
     path: str, frame_shape: tuple = (512, 256), device: str = "cuda"
-) -> List[torch.Tensor]:
+) -> List[np.ndarray]:
     """Loads a video from a file and returns it as a tensor in RGB.
 
     Args:
@@ -82,10 +82,10 @@ def load_video(
         if not ret:
             break
         # convert to PIL Image (converting from BGR to YUV)
-        yuv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        yuv_image = cv2.resize(yuv_image, frame_shape)
-        tens = torch.tensor(yuv_image, device=device, dtype=torch.uint8)
-        frames.append(tens)
+        rbg_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # yuv_image = cv2.resize(yuv_image, frame_shape)
+        # tens = torch.tensor(yuv_image, device=device, dtype=torch.uint8)
+        frames.append(np.array(rbg_image))
         # Process the frame
     cap.release()
     return frames
@@ -580,10 +580,10 @@ class Comma3xDataset(Dataset):
         segment_end_idx: int = 1200,
         device: str = "cuda",
         narrow_image_transforms: Optional[
-            Callable[[torch.Tensor, SupercomboEnv], torch.Tensor]
+            Callable[[List[np.ndarray], SupercomboEnv], List[np.ndarray]]
         ] = None,
         wide_image_transforms: Optional[
-            Callable[[torch.Tensor, SupercomboEnv], torch.Tensor]
+            Callable[[List[np.ndarray], SupercomboEnv], List[np.ndarray]]
         ] = None,
     ) -> None:
         """Constructor for the Comma3xDataset class.
@@ -596,12 +596,14 @@ class Comma3xDataset(Dataset):
             segment_end_idx (int, optional): The camera frame index each segment returned should end at.
                 Defaults to 1200.
             device (str, optional): torch device. Defaults to "cuda".
-            narrow_image_transforms (Optional[ Callable[[torch.Tensor], torch.Tensor] ], optional):
-                Transforms taking in a tensor of [num_imgs, 256, 512] as RGB image and returns
-                the transformed RGB image. Defaults to None.
-            wide_image_transforms (Optional[Callable[[torch.Tensor], torch.Tensor]], optional):
-                Transforms taking in a tensor of [num_imgs, 256, 512] as RGB image and returns
-                the transformed RGB image. Defaults to None.
+            narrow_image_transforms (Optional[Callable[[List[np.ndarray]], List[np.ndarray]] ], optional):
+                Transforms taking in a list of images (original dimensions) as RGB image and returns
+                the list of transformed RGB images. These will later be transformed to (h:256, w:512).
+                Defaults to None.
+            wide_image_transforms (Optional[Callable[[List[np.ndarray]], List[np.ndarray]]], optional):
+                Transforms taking in a list of images (original dimensions) as RGB image and returns
+                the list of transformed RGB images. These will later be transformed to (h:256, w:512).
+                Defaults to None.
         """
         self.device = device
         self.path = Path(folder)
@@ -625,31 +627,56 @@ class Comma3xDataset(Dataset):
         fcamera_path = segment_path / "fcamera.hevc"
         # qcamera_path = device_path / "qcamera.ts" # not using
         # qlog_path = segment / "qlog" # only using rlog
-        narrow_frames_rgb = torch.stack(
-            load_video(fcamera_path.as_posix(), device=self.device)[
-                self.segment_start_idx : self.segment_end_idx
-            ]
-        )
+        narrow_frames_rgb = load_video(fcamera_path.as_posix(), device=self.device)[
+            self.segment_start_idx : self.segment_end_idx
+        ]
         transformed_narrow_frames = (
             self.narrow_image_transforms(narrow_frames_rgb, senv)
             if self.narrow_image_transforms is not None
             else narrow_frames_rgb
         )
-        wide_angle_frames = torch.stack(
-            load_video(ecamera_path.as_posix(), device=self.device)[
-                self.segment_start_idx : self.segment_end_idx
-            ]
-        )
+        wide_angle_frames = load_video(ecamera_path.as_posix(), device=self.device)[
+            self.segment_start_idx : self.segment_end_idx
+        ]
         transformed_wide_angle_frames = (
             self.wide_image_transforms(wide_angle_frames, senv)
             if self.wide_image_transforms is not None
             else wide_angle_frames
         )
-        final_narrow_frames = rgb_to_6_channel_yuv(transformed_narrow_frames)
-        final_wide_angle_frames = rgb_to_6_channel_yuv(transformed_wide_angle_frames)
+        resized_original_narrow = [
+            cv2.resize(frame, (512, 256)) for frame in narrow_frames_rgb
+        ]
+        resized_narrow = [
+            cv2.resize(frame, (512, 256)) for frame in transformed_narrow_frames
+        ]
+        resized_wide = [
+            cv2.resize(frame, (512, 256)) for frame in transformed_wide_angle_frames
+        ]
+        stacked_original_narrow = torch.stack(
+            [
+                torch.tensor(frame, device=self.device, dtype=torch.uint8)
+                for frame in resized_original_narrow
+            ]
+        )
+        stacked_narrow = torch.stack(
+            [
+                torch.tensor(frame, device=self.device, dtype=torch.uint8)
+                for frame in resized_narrow
+            ]
+        )
+        stacked_wide = torch.stack(
+            [
+                torch.tensor(frame, device=self.device, dtype=torch.uint8)
+                for frame in resized_wide
+            ]
+        )
+        final_narrow_frames = rgb_to_6_channel_yuv(stacked_narrow)
+        final_wide_angle_frames = rgb_to_6_channel_yuv(stacked_wide)
+        final_original_narrow = rgb_to_6_channel_yuv(stacked_original_narrow)
         return (
             final_narrow_frames.to(dtype=torch.float32),
             final_wide_angle_frames.to(dtype=torch.float32),
+            final_original_narrow,
         )
 
     def __len__(self) -> int:
@@ -718,9 +745,12 @@ class Comma3xDataset(Dataset):
             "device_type": [str(log.deviceState.deviceType) for log in rlog_relevant],
             "sensor": [str(log.roadCameraState.sensor) for log in rlog_relevant],
         }
-        narrow_frames, wide_angle_frames = self._get_video_frames(idx, supercombo_env)
+        narrow_frames, wide_angle_frames, original_narrows = self._get_video_frames(
+            idx, supercombo_env
+        )
         narrow_frames = concat_current_with_previous_frame(narrow_frames)
         wide_angle_frames = concat_current_with_previous_frame(wide_angle_frames)
+        original_narrows = concat_current_with_previous_frame(original_narrows)
         traffic_convention = get_traffic_conventions_tensor_from_rlog(
             rlog_relevant, device=self.device
         )
@@ -738,6 +768,7 @@ class Comma3xDataset(Dataset):
             # In Openpilot you can choose whether to mainly use narrow or wide frames, here maining narrow
             "input_imgs": narrow_frames.permute(0, 3, 1, 2),
             "big_input_imgs": wide_angle_frames.permute(0, 3, 1, 2),
+            "untransformed_narrow_imgs": original_narrows.permute(0, 3, 1, 2),
         }
 
         model_outputs_list = [

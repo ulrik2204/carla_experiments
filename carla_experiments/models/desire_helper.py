@@ -197,10 +197,6 @@ def get_next_desire_state(
     lane_change_prob: float,
 ) -> DesireState:
     # Print all inputs
-    print(f"{state=}")
-    print(f"{carstate=}")
-    print(f"{lateral_active=}")
-    print(f"{lane_change_prob=}")
     new_state = state.copy()
     v_ego = carstate["v_ego"]
     one_blinker = carstate["left_blinker"] != carstate["right_blinker"]
@@ -293,5 +289,4 @@ def get_next_desire_state(
         elif new_state["desire"] in (log.Desire.keepLeft, log.Desire.keepRight):
             new_state["desire"] = log.Desire.none
 
-    print(f"{new_state['desire']=}")
     return new_state
