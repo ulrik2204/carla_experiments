@@ -24,21 +24,15 @@ from carla_experiments.carla_utils.spawn import (
     spawn_walker_bots,
 )
 from carla_experiments.carla_utils.types_carla_utils import SegmentConfigResult
-from carla_experiments.common.position_and_rotation import (
-    carla_location_to_ecef,
-    carla_rotation_to_ecef_frd_quaternion,
-    ecef_to_carla_location,
-    waypoints_to_ecef,
-)
 from carla_experiments.common.utils_op_deepdive import (
+    T_ANCHORS,
     frd_waypoints_to_fru,
-    plot_trajectory,
     setup_calling_op_deepdive,
     transform_images,
 )
 from carla_experiments.models.op_deepdive import SequenceBaselineV1
 
-CKPT_PATH = "./.weights/comma_epoch_99.pth"
+CKPT_PATH = "./.weights/may09_epoch_99.pth"
 DT_CTRL = 0.01  # controlsd
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 start_time = time.time()
@@ -136,14 +130,16 @@ def get_predicted_trajectory(
     return most_confident_trajectory  # Should be [num_pts, 3] where num_pts = 33
 
 
-def calculate_speeds_tensor(waypoints: torch.Tensor) -> np.ndarray:
-    # Expects tensor of shape (N, 3) where N is the number of waypoints
-    # Calculate differences in x, y, and t between successive waypoints
+def calculate_speeds_tensor(
+    waypoints: torch.Tensor, t_anchors: torch.Tensor
+) -> np.ndarray:
+    # Expects tensor of shape (N, 3) for waypoints and shape (N,) for t_anchors
+    # Calculate differences in x, y, and z between successive waypoints
     diffs = waypoints[1:] - waypoints[:-1]
-    # Calculate Euclidean distances between successive waypoints (ignoring time dimension)
-    distances = torch.sqrt(diffs[:, 0] ** 2 + diffs[:, 1] ** 2)
-    # Get time differences
-    time_diffs = diffs[:, 2]
+    # Calculate Euclidean distances between successive waypoints
+    distances = torch.sqrt(diffs[:, 0] ** 2 + diffs[:, 1] ** 2 + diffs[:, 2] ** 2)
+    # Get time differences from t_anchors
+    time_diffs = t_anchors[1:] - t_anchors[:-1]
     # Avoid division by zero for time differences by replacing 0 with a very small number
     time_diffs = torch.where(time_diffs == 0, torch.tensor(1e-6), time_diffs)
     # Calculate speeds
@@ -205,7 +201,7 @@ def predict_vehicle_controls_task(
     if last_image is None:
         context.data_dict["last_image"] = current_image
         return
-    wp_index = 1
+    wp_index = 3  # Is way longer into the future than 1, which is good for PID
     trajectory = get_predicted_trajectory(current_image, last_image).cpu()
     # METHOD 1: Converting ECEF waypoints back to ECEF coords and then to CARLA coords
     # vehicle_location_ecef = carla_location_to_ecef(
@@ -228,31 +224,32 @@ def predict_vehicle_controls_task(
     # METHOD 2: The waypoints are in FRD, convert to left-handed FRU and then convert to CARLA
     fru_waypoints = frd_waypoints_to_fru(trajectory.numpy())
     # fru_waypoints[:, 1] = -fru_waypoints[:, 1]  # pretty sure this is wrong
-    print("fru_waypoint", fru_waypoints[wp_index])
+    # print("fru_waypoint", fru_waypoints[wp_index])
     trajectory_locations = [
         transform_from_ego_frame_to_map_coordinates(current_transform, wp)
         for wp in fru_waypoints
     ]
-    average_wp = np.mean(fru_waypoints[wp_index : wp_index + 5], axis=0)
-    print("average_wp", average_wp)
+    used_wp = fru_waypoints[wp_index]
+    # print("average_wp", average_wp)
 
     target_location = transform_from_ego_frame_to_map_coordinates(
-        current_transform, average_wp
+        current_transform, used_wp
     )
 
-    global did_once
-    if not did_once:
-        plot_trajectory(trajectory.numpy(), save_path="trajectory_3d.png")
-        did_once = True
     draw_trajectory(context.client.get_world(), trajectory_locations)
     # print("converted_waypoint", converted_waypoint)
-    speeds = calculate_speeds_tensor(trajectory)
+    print(f"{trajectory.shape}, {T_ANCHORS.shape}")
+    speeds = calculate_speeds_tensor(trajectory, torch.tensor(T_ANCHORS))
     next_speed = speeds[wp_index]
+    next_speed = np.linalg.norm(
+        (used_wp[:2] - fru_waypoints[:2, 0]) / (T_ANCHORS[wp_index] - T_ANCHORS[0])
+    ).item()
+    print("next_speed", next_speed)
     # print("next_speed", next_speedo)
-    loc = current_transform.location
-    print("-----")
-    print("current location", loc.x, loc.y, loc.z)
-    print("target location", target_location.x, target_location.y, target_location.z)
+    # loc = current_transform.location
+    # print("-----")
+    # print("current location", loc.x, loc.y, loc.z)
+    # print("target location", target_location.x, target_location.y, target_location.z)
     control = context.pid_controller.run_step(next_speed, target_location)
     # control.brake = 0
     # print("control", control)
@@ -271,10 +268,17 @@ def spectator_follow_ego_vehicle_task(
     #     return
     ego_vehicle = context.ego_vehicle
     vehicle_transform = ego_vehicle.get_transform()
+    ego_loc = vehicle_transform.location
+    forward = vehicle_transform.get_forward_vector()
     spectator = context.client.get_world().get_spectator()
     spectator_transform = spectator.get_transform()
-    spectator_transform.location = vehicle_transform.location + carla.Location(z=2)
-    spectator_transform.rotation = vehicle_transform.rotation
+    spectator_transform.location = carla.Location(
+        x=ego_loc.x - 10 * forward.x,
+        y=ego_loc.y - 10 * forward.y,
+        z=ego_loc.z + 10,
+    )
+    rot = vehicle_transform.rotation
+    spectator_transform.rotation = carla.Rotation(pitch=-30, yaw=rot.yaw, roll=0)
     spectator.set_transform(spectator_transform)
     # done = True
 
@@ -340,7 +344,7 @@ def generate_infinite_segment(map: str):
         carla_map = world.get_map()
         spawn_points = carla_map.get_spawn_points()
         # len_spawn_points = len(spawn_points)
-        spawn_point_index = 1
+        spawn_point_index = 5
         # rotation = used_spawn_point.rotation
         # location = used_spawn_point.location
         # print("Generating in map", map)
