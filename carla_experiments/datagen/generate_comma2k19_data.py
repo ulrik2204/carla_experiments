@@ -69,36 +69,14 @@ class AppContext(BatchContext[AppSensorMap, AppActorMap], AppSettings):
 
 def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
     front_image = sensor_data_map["front_camera"]
-    # radar_data = parse_radar_data(sensor_data_map["radar"])
-    # imu_data = parse_imu_data(sensor_data_map["imu"])
-    # gnss_data = parse_gnss_data(sensor_data_map["gnss"])
-    # speed = calculate_vehicle_speed(context.ego_vehicle)
-    # front_image.timestamp  # TODO: use this for frame times?
     ego_vehicle = context.ego_vehicle
     vehicle_transform = ego_vehicle.get_transform()
-    # camera_transform = context.sensor_map["front_camera"].get_transform()
     location = vehicle_transform.location
     rotation = vehicle_transform.rotation
     location_np = carla_location_to_ecef(context.map, location)
-    wp = context.map.get_waypoint(location)
-    wp.get_left_lane().transform.location
-    context.client.get_trafficmanager()
-    wp.get_left_lane()
-    wp.get_right_lane().transform
-    ego_vehicle.get_velocity().length()
-    ego_vehicle.get_light_state()
-    wp.lane_width
-    camera_transform = context.sensor_map["front_camera"].get_transform()
-    some = camera_transform.get_inverse_matrix() * vehicle_transform.get_matrix()
 
-    actors = context.client.get_world().get_actors()
-
-    # location_np = np.array([location.x, location.y, location.z])
     rotation_np = carla_rotation_to_ecef_frd_quaternion(context.map, rotation)
     ego_vehicle.get_angular_velocity()
-    # rotation_np = np.array([rotation.pitch, rotation.yaw, rotation.roll])
-    # frame = _generate_frame_id()
-    # print(f"before add [frame {frame}]", len(context.data_dict["images"]))
     image = carla_image_to_pil_image(front_image)  # .transpose(Image.FLIP_LEFT_RIGHT)
     context.data_dict["images"].append(image)
     context.data_dict["location"].append(location_np)
@@ -109,18 +87,6 @@ def save_data_task(context: AppContext, sensor_data_map: AppSensorDataMap):
     context.data_dict["carla_rotation"].append(
         np.array([rotation.pitch, rotation.yaw, rotation.roll])
     )
-    # print(f"after add [frame {frame}]", len(context.data_dict["images"]))
-    # return {
-    #     "location": {
-    #         str(frame): location_np,
-    #     },
-    #     "rotation": {
-    #         str(frame): rotation_np,
-    #     },
-    #     "images": {
-    #         str(frame): front_image,
-    #     },
-    # }
 
 
 def spectator_follow_ego_vehicle_task(
