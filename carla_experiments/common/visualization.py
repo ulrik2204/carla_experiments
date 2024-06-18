@@ -21,6 +21,7 @@ from carla_experiments.common.utils_openpilot import (
     tici_fcam_intrinsics,
 )
 from carla_experiments.datasets.comma3x_dataset import get_dict_shape
+from carla_experiments.models.supercombo_utils import ModelConstants
 
 
 # From https://github.com/OpenDriveLab/Openpilot-Deepdive
@@ -104,7 +105,7 @@ def draw_trajectory_on_ax(
 def draw_lead(
     lead_output,
     img,
-    height=0.5,
+    height=1.2,
     line_color=(0, 255, 0),
     intrinsics: Optional[np.ndarray] = None,
     rpy: Optional[np.ndarray] = np.array([0, 0, 0]),
@@ -463,7 +464,7 @@ def plot_driving_trajectory(
     # print(get_dict_shape(pred_outputs))
 
     ax4.imshow(original_img.astype(np.uint8))
-    ax4.set_title("project on current frame")
+    ax4.set_title("Pred plan projected on current frame")
     ax4.axis("off")
 
     plt.tight_layout()
@@ -478,6 +479,15 @@ def plot_driving_trajectory(
 
 def to_3d(traj_2d: torch.Tensor) -> List[np.ndarray]:
     return [F.pad(path, (0, 1)).cpu().numpy() for path in traj_2d]
+
+
+def add_x_axes_to_yz(traj_yz: torch.Tensor, xs: List[float] = ModelConstants.X_IDXS):
+    # xs is an array of length 33
+    expanded_xs = torch.stack([torch.tensor(xs) for _ in range(traj_yz.shape[0])])[
+        ..., None
+    ]  # size (len, 33, 1)
+    a = torch.concat((expanded_xs, traj_yz), dim=-1)
+    return [a[i].cpu().numpy() for i in range(a.shape[0])]
 
 
 def stds_to_probs(stds: List[float]) -> List[float]:
@@ -508,13 +518,15 @@ def visualize_trajectory(
     # Plotting lane lines
     lane_lines_base_path = base_path / "lane_lines"
     lane_lines_base_path.mkdir(parents=True, exist_ok=True)
-    pred_lane_lines = to_3d(pred_outputs["lane_lines"][0])
+    pred_lane_lines = add_x_axes_to_yz(
+        pred_outputs["lane_lines"][0]
+    )  # The (33, 2) lane lines (y, z)
     pred_probs = pred_outputs["lane_line_probs"][0].tolist()
     pred_lane_line_labels = [
         f"pred_lane_line_{i}@{prob:.2f}" for i, prob in enumerate(pred_probs)
     ]
     pred_lane_line_colors = [(0, int(255 * prob), 0) for prob in pred_probs]
-    gt_lane_lines = to_3d(gt["lane_lines"][0])
+    gt_lane_lines = add_x_axes_to_yz(gt["lane_lines"][0])
     gt_probs = gt["lane_line_probs"][0].tolist()
     gt_lane_line_labels = [
         f"gt_lane_line_{i}@{prob:.2f}" for i, prob in enumerate(gt_probs)
@@ -527,7 +539,7 @@ def visualize_trajectory(
         labels=pred_lane_line_labels + gt_lane_line_labels,
         confs=pred_probs + gt_probs,
         colors=pred_lane_line_colors + gt_lane_line_colors,
-        height=1.2,
+        height=0,
         rpy=rpy_calib,
         save_path=(lane_lines_base_path / image_name).with_suffix(".png").as_posix(),
         title=f"Lane Lines, L2: {model_output_metrics['lane_lines_l2']:0.2f}",
@@ -536,13 +548,13 @@ def visualize_trajectory(
     # Plot road edges
     road_edges_base_path = base_path / "road_edges"
     road_edges_base_path.mkdir(parents=True, exist_ok=True)
-    pred_road_edges = to_3d(pred_outputs["road_edges"][0])
+    pred_road_edges = add_x_axes_to_yz(pred_outputs["road_edges"][0])
     pred_road_edge_stds = stds_to_probs(pred_outputs["road_edge_stds"][0].tolist())
     pred_road_edge_labels = [
         f"pred_road_edge_{i}@{1 - std:.2f}" for i, std in enumerate(pred_road_edge_stds)
     ]
     pred_road_edge_colors = [(0, int(255 * prob), 0) for prob in pred_road_edge_stds]
-    gt_road_edges = to_3d(gt["road_edges"][0])
+    gt_road_edges = add_x_axes_to_yz(gt["road_edges"][0])
     gt_road_edge_stds = stds_to_probs(gt["road_edge_stds"][0].tolist())
     gt_road_edge_labels = [
         f"gt_road_edge_{i}@{1 - std:.2f}" for i, std in enumerate(gt_road_edge_stds)
@@ -554,7 +566,7 @@ def visualize_trajectory(
         labels=pred_road_edge_labels + gt_road_edge_labels,
         confs=pred_road_edge_stds + gt_road_edge_stds,
         colors=pred_road_edge_colors + gt_road_edge_colors,
-        height=1.2,
+        height=0,
         rpy=rpy_calib,
         save_path=(road_edges_base_path / image_name).with_suffix(".png").as_posix(),
         title=f"Road Edges, L2: {model_output_metrics['road_edges_l2']:0.2f}",

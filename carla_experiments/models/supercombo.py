@@ -236,10 +236,9 @@ def main_onnx():
                 partial_inputs["untransformed_narrow_imgs"].squeeze(0).astype(np.uint8)
             )
             rpy_calib = env_indexed["rpy_calib"].cpu().numpy().astype(np.float32)[0]
-            size = trajectory_image.shape
-            trajectory_image = warp_image(
-                trajectory_image, rpy_calib, output_size=(512, 256)
-            )
+            # trajectory_image = warp_image(
+            #     trajectory_image, rpy_calib, output_size=(512, 256)
+            # )
 
             original_input_img = trajectory_image
             # yuv_6_channel_to_rgb(torch.tensor(trajectory_image).permute(0, 2, 3, 1))

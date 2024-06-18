@@ -137,12 +137,12 @@ class PlanFull(TypedDict):
 
 class SupercomboFullOutput(TypedDict):
     plan: PlanFull
-    lane_lines: torch.Tensor  # Shape([num_imgs, 4, 33, 2])
+    lane_lines: torch.Tensor  # Shape([num_imgs, 4, 33, 2]) (y and z values)
     lane_line_probs: torch.Tensor  # Shape([num_imgs, 8])
     lane_line_stds: torch.Tensor  # Shape([num_imgs, 4])
-    road_edges: torch.Tensor  # Shape([num_imgs, 2, 33, 2])
+    road_edges: torch.Tensor  # Shape([num_imgs, 2, 33, 2]) (y and z values)
     road_edge_stds: torch.Tensor  # Shape([num_imgs, 2])
-    lead: torch.Tensor  # Shape([num_imgs, 3, 6, 4])
+    lead: torch.Tensor  # Shape([num_imgs, 3, 6, 4]) (x, y, v, a)
     lead_stds: torch.Tensor  # Shape([num_imgs, 3, 6, 4])
     lead_prob: torch.Tensor  # Shape([num_imgs, 3])
     desire_state: torch.Tensor  # Shape([num_imgs, 8])

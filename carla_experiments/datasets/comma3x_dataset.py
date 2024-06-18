@@ -248,8 +248,8 @@ def model_outputs_rlog_to_tensors(
     lane_lines = torch.stack(
         [
             stack_xyz(
-                lane_line.x,
                 lane_line.y,
+                lane_line.z,
                 device=device,
                 dtype=torch.float32,
             )
@@ -265,8 +265,8 @@ def model_outputs_rlog_to_tensors(
     road_edges = torch.stack(
         [
             stack_xyz(
-                road_edge.x,
                 road_edge.y,
+                road_edge.z,
                 device=device,
                 dtype=torch.float32,
             )
