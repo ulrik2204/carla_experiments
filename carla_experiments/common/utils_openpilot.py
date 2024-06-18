@@ -131,15 +131,8 @@ def get_warp_matrix(
     return warp_matrix
 
 
-once = True
-
-
 def warp_image_as_op_deepdive(img: np.ndarray):
-    global once
     # This expects (874, 1164, 3) uint8
-    if once:
-        print("img shape", img.shape)
-        plt.imsave("first_input.png", img)
     img = cv2.resize(img, (1164, 874))
     warp_matrix = calibration(
         extrinsic_matrix=np.array(
@@ -156,11 +149,6 @@ def warp_image_as_op_deepdive(img: np.ndarray):
         dsize=(512, 256),
         flags=cv2.WARP_INVERSE_MAP,
     )
-    if once:
-        print("warped shape", im.shape)
-        print("warped", im)
-        plt.imsave("warped.png", im)
-        once = False
     return np.array(im)
 
 
@@ -169,13 +157,13 @@ def warp_image(
     device_from_calib_euler: np.ndarray,
     wide_camera: bool = False,
     bigmodel_frame: bool = False,
+    output_size=(512, 256),
 ) -> np.ndarray:
     warp_matrix = get_warp_matrix(device_from_calib_euler, wide_camera, bigmodel_frame)
-
     war = cv2.warpPerspective(
         img,
         warp_matrix,
-        (512, 256),
+        output_size,
         flags=cv2.WARP_INVERSE_MAP,
     )
     return np.array(war)
@@ -254,6 +242,89 @@ DEVICE_CAMERAS = {
     ("pc", "unknown"): _ar_ox_config,
 }
 
+YUV_FROM_RGB = np.array(
+    [
+        [0.299, 0.587, 0.114],
+        [-0.14714119, -0.28886916, 0.43601035],
+        [0.61497538, -0.51496512, -0.10001026],
+    ]
+)
+RGB_FROM_YUV = np.linalg.inv(YUV_FROM_RGB)
+
+
+# Openpilot code
+def rgb24toyuv(rgb):
+    # img is shape (height, width, 3)
+    img = np.dot(rgb.reshape(-1, 3), YUV_FROM_RGB.T).reshape(rgb.shape)
+
+    ys = img[:, :, 0]
+    us = (
+        img[::2, ::2, 1] + img[1::2, ::2, 1] + img[::2, 1::2, 1] + img[1::2, 1::2, 1]
+    ) / 4 + 128
+    vs = (
+        img[::2, ::2, 2] + img[1::2, ::2, 2] + img[::2, 1::2, 2] + img[1::2, 1::2, 2]
+    ) / 4 + 128
+
+    return ys, us, vs
+
+
+# Openpilot code
+def rgb24toyuv420(rgb: np.ndarray):
+    # rgb is shape (height, width, 3)
+    ys, us, vs = rgb24toyuv(rgb)
+
+    y_len = rgb.shape[0] * rgb.shape[1]
+    uv_len = y_len // 4
+
+    yuv420 = np.empty(y_len + 2 * uv_len, dtype=rgb.dtype)
+    yuv420[:y_len] = ys.reshape(-1)
+    yuv420[y_len : y_len + uv_len] = us.reshape(-1)
+    yuv420[y_len + uv_len : y_len + 2 * uv_len] = vs.reshape(-1)
+
+    return yuv420.clip(0, 255).astype("uint8")
+
+
+def yuvtorgb24(ys, us, vs):
+    # Adjust U and V channels by subtracting 128
+    us = us - 128
+    vs = vs - 128
+
+    # Upsample U and V to the size of Y
+    u_upsampled = np.repeat(np.repeat(us, 2, axis=0), 2, axis=1)
+    v_upsampled = np.repeat(np.repeat(vs, 2, axis=0), 2, axis=1)
+
+    # Stack the Y, U, and V channels to form a YUV image
+    yuv = np.stack((ys, u_upsampled, v_upsampled), axis=-1)
+
+    # Reshape to match the input image's shape
+    yuv = yuv.reshape(-1, 3)
+
+    # Convert YUV back to RGB
+    rgb = np.dot(yuv, RGB_FROM_YUV.T)
+
+    # Clip values to valid range
+    rgb = np.clip(rgb, 0, 255).astype(np.uint8)
+
+    # Reshape to the original image shape
+    rgb = rgb.reshape(ys.shape[0], ys.shape[1], 3)
+
+    return rgb
+
+
+def yuv420torgb24(yuv420, width, height):
+    # yuv420 is a flat array of Y, U, and V values
+
+    y_len = height * width
+    uv_len = y_len // 4
+
+    ys = yuv420[:y_len].reshape((height, width))
+    us = yuv420[y_len : y_len + uv_len].reshape((height // 2, width // 2))
+    vs = yuv420[y_len + uv_len : y_len + 2 * uv_len].reshape((height // 2, width // 2))
+
+    rgb = yuvtorgb24(ys, us, vs)
+
+    return rgb
+
 
 # custom
 def rgb_to_6_channel_yuv(frames: torch.Tensor) -> torch.Tensor:
@@ -276,6 +347,7 @@ def rgb_to_6_channel_yuv(frames: torch.Tensor) -> torch.Tensor:
         dtype=frames.dtype,
         device=frames.device,
     )
+    # yuv_from_rgb = torch.tensor(YUV_FROM_RGB, device=frames.device, dtype=torch.float32)
 
     # Process each frame
     for i in range(num_frames):
@@ -321,6 +393,7 @@ def yuv_6_channel_to_rgb(frames: torch.Tensor) -> torch.Tensor:
 
     # Prepare output tensor
     rgb_frames = []
+    # rgb_from_yuv = torch.tensor(RGB_FROM_YUV, device=frames.device, dtype=torch.float32)
 
     # Process each frame
     for i in range(num_frames):
@@ -350,3 +423,17 @@ def yuv_6_channel_to_rgb(frames: torch.Tensor) -> torch.Tensor:
         rgb_frames.append(torch.tensor(rgb, dtype=frames.dtype, device=frames.device))
 
     return torch.stack(rgb_frames)
+
+
+def car_space_to_bb(x, y, z, rpy, intrinsic, width=1928, height=1208):
+    car_space_projective = np.column_stack((x, y, z)).T
+    ext = get_view_frame_from_calib_frame(rpy[0], rpy[1], rpy[2], 0.0)[:, :3]
+    ep = ext.dot(car_space_projective)
+    kep = intrinsic.dot(ep)
+    values = (kep[:-1, :] / kep[-1, :]).T
+    values[values[:, 0] > width] = np.nan
+    values[values[:, 0] < 0] = np.nan
+    values[values[:, 1] > width] = np.nan
+    values[values[:, 1] < 0] = np.nan
+    # values = np.round(values).astype(int)
+    return values

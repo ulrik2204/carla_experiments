@@ -39,14 +39,15 @@ from carla_experiments.models.desire_helper import (
 )
 from carla_experiments.models.supercombo_utils import (
     get_supercombo_onnx_model,
+    mean_l2_loss,
     parse_supercombo_outputs,
     supercombo_tensors_at_idx,
     torch_dict_to_numpy,
     total_loss,
 )
 
-PATH_TO_ONNX = Path(".weights/supercombo.onnx")
-PATH_TO_METADATA = Path(".weights/supercombo_metadata.pkl")
+PATH_TO_ONNX = Path(".weights/supercombo096.onnx")
+PATH_TO_METADATA = Path(".weights/supercombo_metadata.pkl")  # not used
 
 
 class SupercomboONNX:
@@ -66,6 +67,9 @@ class SupercomboONNX:
         return pred[0]  # only use the first result which is the [1, 6504] tensor
 
 
+once = True
+
+
 def transform_image(
     images: List[np.ndarray],
     senv: SupercomboEnv,
@@ -75,11 +79,11 @@ def transform_image(
     imgs = []
     for i, image in enumerate(images):
         env_indexed = supercombo_tensors_at_idx(senv, i, batched=False)
-        device_type = str(env_indexed["device_type"])
-        sensor = str(env_indexed["sensor"])
-        dc: DeviceCameraConfig = DEVICE_CAMERAS.get((device_type, sensor), None)  # type: ignore
-        if dc is None:
-            raise ValueError(f"Unknown device_type: {device_type} and sensor: {sensor}")
+        # device_type = str(env_indexed["device_type"])
+        # sensor = str(env_indexed["sensor"])
+        # dc: DeviceCameraConfig = DEVICE_CAMERAS.get((device_type, sensor), None)  # type: ignore
+        # if dc is None:
+        #     raise ValueError(f"Unknown device_type: {device_type} and sensor: {sensor}")
         rpy_calib = env_indexed["rpy_calib"]
         # Is rpy calib really the extrinsic rotation
         # Additionally need translation matrix - speed?
@@ -107,17 +111,28 @@ def transform_image(
         # plt.imsave("some.png", some)
         # sys.exit(0)
     # print("res shape", res.shape)
+
+    # global once
+    # image = images[0]
+    # # print("image shape", image.shape)
+    # if once:
+    #     plt.imsave("image.png", image)
+    #     once = False
     return imgs
 
 
 def main_onnx():
     print("Using ONNX")
     current_date = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    save_path = Path(".plots") / current_date
-    save_path.mkdir(exist_ok=True, parents=True)
+    base_save_path = Path(".plots") / current_date
+    graphs_path = base_save_path / "graphs"
+    base_save_path.mkdir(exist_ok=True, parents=True)
+    base_save_path.mkdir(exist_ok=True, parents=True)
+    graphs_path.mkdir(exist_ok=True, parents=True)
+
     model = SupercomboONNX()
     segment_start_idx = 300
-    segment_end_idx = 400
+    segment_end_idx = 450
     batch_size = 1  # CANNOT CHANGE THIS; HAS TO BE 1
 
     segment_length = segment_end_idx - segment_start_idx
@@ -138,7 +153,10 @@ def main_onnx():
             SupercomboPartialNumpyInput,
             torch_dict_to_numpy(inputs_base, dtype=np.float32),
         )
-        # ground_truth_np = torch_dict_to_numpy(ground_truth, dtype=np.float32)
+        position_l2s = []
+        lead_l2s = []
+        lane_lines_l2s = []
+        road_edges_l2s = []
 
         # Recurrent inputs
         features_buffer = np.zeros(
@@ -165,22 +183,30 @@ def main_onnx():
             )
             desire[:, :-1] = desire[:, 1:]
             current_desire_vector = get_desire_vector(desire_state["desire"])
+            # current_desire_vector = ground_truth["desire_state"].cpu().numpy()[0, 0]
             current_desire_vector[0] = 0
             # The current desire should not include previous desires,
             # and each element at each index should be either 0 or 1
             desire[:, -1] = np.where(
                 current_desire_vector - prev_desire > 0.99, current_desire_vector, 0
             )
+            # The main images are the wide images
             inputs: SupercomboFullNumpyInputs = {
                 "big_input_imgs": partial_inputs["big_input_imgs"],
                 "input_imgs": partial_inputs["input_imgs"],
                 "traffic_convention": partial_inputs["traffic_convention"],
                 "lateral_control_params": partial_inputs["lateral_control_params"],
                 "desire": desire,
+                "nav_features": np.zeros(
+                    SupercomboInputShapes.NAV_FEATURES, dtype=np.float32
+                ),
+                "nav_instructions": np.zeros(
+                    SupercomboInputShapes.NAV_INSTRUCTIONS, dtype=np.float32
+                ),
                 "prev_desired_curv": prev_desired_curv,
                 "features_buffer": features_buffer,
             }
-            gt = supercombo_tensors_at_idx(ground_truth, i)
+            gt: SupercomboOutputLogged = supercombo_tensors_at_idx(ground_truth, i)
             pred = model(inputs)
             parsed_pred = parse_supercombo_outputs(pred)
             features_buffer[:, :-1] = features_buffer[:, 1:]
@@ -194,17 +220,33 @@ def main_onnx():
             # Updating lane_change_prob
             lane_change_prob = float(left_prob + right_prob)
 
-            loss = total_loss(parsed_pred, gt)  # type: ignore
-            untransformed_narrow_imgs = partial_inputs["untransformed_narrow_imgs"]
-            original_input_img = (
-                yuv_6_channel_to_rgb(
-                    torch.tensor(untransformed_narrow_imgs).permute(0, 2, 3, 1)
-                )
-                .squeeze(0)
-                .to(dtype=torch.uint8)
-                .cpu()
-                .numpy()
+            position_l2 = mean_l2_loss(
+                parsed_pred["plan"]["position"], gt["plan"]["position"]
             )
+            lead_l2 = mean_l2_loss(parsed_pred["lead"], gt["lead"])
+            lane_lines_l2 = mean_l2_loss(parsed_pred["lane_lines"], gt["lane_lines"])
+            road_edges_l2 = mean_l2_loss(parsed_pred["road_edges"], gt["road_edges"])
+            position_l2s.append(position_l2)
+            lead_l2s.append(lead_l2)
+            lane_lines_l2s.append(lane_lines_l2)
+            road_edges_l2s.append(road_edges_l2)
+
+            # Plotting predicted trajectory
+            trajectory_image = (
+                partial_inputs["untransformed_narrow_imgs"].squeeze(0).astype(np.uint8)
+            )
+            rpy_calib = env_indexed["rpy_calib"].cpu().numpy().astype(np.float32)[0]
+            size = trajectory_image.shape
+            trajectory_image = warp_image(
+                trajectory_image, rpy_calib, output_size=(512, 256)
+            )
+
+            original_input_img = trajectory_image
+            # yuv_6_channel_to_rgb(torch.tensor(trajectory_image).permute(0, 2, 3, 1))
+            # .squeeze(0)
+            # .to(dtype=torch.uint8)
+            # .cpu()
+            # .numpy()
 
             prev_input_img = (
                 yuv_6_channel_to_rgb(
@@ -235,9 +277,24 @@ def main_onnx():
                 current_input_img,
                 parsed_pred,
                 gt,
-                loss,
-                (save_path / f"{image_id:06}.png").as_posix(),
+                rpy_calib,
+                base_save_path,
+                image_name=str(image_id),
+                model_output_metrics={
+                    "plan_l2": position_l2,
+                    "lead_l2": lead_l2,
+                    "lane_lines_l2": lane_lines_l2,
+                    "road_edges_l2": road_edges_l2,
+                },
             )
+        plt.plot(position_l2s, label="Position Mean L2")
+        plt.savefig((graphs_path / f"batch_{i_batch}_position_l2.png").as_posix())
+        plt.plot(lead_l2s, label="Lead L2")
+        plt.savefig((graphs_path / f"batch_{i_batch}_lead_l2.png").as_posix())
+        plt.plot(lane_lines_l2s, label="Lane Lines Mean L2")
+        plt.savefig((graphs_path / f"batch_{i_batch}_lane_lines_l2.png").as_posix())
+        plt.plot(road_edges_l2s, label="Road Edges Mean L2")
+        plt.savefig((graphs_path / f"batch_{i_batch}_road_edges_l2.png").as_posix())
 
 
 def main_plot():
@@ -253,15 +310,15 @@ def main_plot():
         torch.tensor(both_img[:, 6:])
     )  # .squeeze(0).transpose(1, 2, 0)
 
-    visualize_trajectory(
-        current_input_img.cpu().numpy(),
-        prev_input_img.cpu().numpy(),
-        current_input_img.cpu().numpy(),
-        output,
-        gt,
-        0.5,
-        "pred_plan.png",
-    )
+    # visualize_trajectory(
+    #     current_input_img.cpu().numpy(),
+    #     prev_input_img.cpu().numpy(),
+    #     current_input_img.cpu().numpy(),
+    #     output,
+    #     gt,
+    #     "pred",
+    #     "pred_plan.png",
+    # )
     # print("gt", gt)
 
 

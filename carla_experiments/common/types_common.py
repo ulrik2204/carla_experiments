@@ -10,6 +10,7 @@ class SupercomboPartialNumpyInput(TypedDict):
     input_imgs: np.ndarray  # shape: [num_imgs, 12, 128, 256]
     big_input_imgs: np.ndarray  # shape: [num_imgs, 12, 128, 256]
     untransformed_narrow_imgs: np.ndarray  # shape: [num_imgs, 12, 128, 256]
+    untransformed_wide_imgs: np.ndarray  # shape: [num_imgs, 12, 128, 256]
 
 
 class SupercomboPartialTorchInput(TypedDict):
@@ -18,6 +19,7 @@ class SupercomboPartialTorchInput(TypedDict):
     input_imgs: torch.Tensor  # shape: [num_imgs, 12, 128, 256]
     big_input_imgs: torch.Tensor  # shape: [num_imgs, 12, 128, 256]
     untransformed_narrow_imgs: torch.Tensor  # shape: [num_imgs, 12, 128, 256]
+    untransformed_wide_imgs: torch.Tensor  # shape: [num_imgs, 12, 128, 256]
 
 
 class SupercomboFullNumpyInputs(TypedDict):
@@ -26,6 +28,8 @@ class SupercomboFullNumpyInputs(TypedDict):
     desire: np.ndarray
     traffic_convention: np.ndarray
     lateral_control_params: np.ndarray
+    nav_features: np.ndarray
+    nav_instructions: np.ndarray
     prev_desired_curv: np.ndarray
     features_buffer: np.ndarray
 
@@ -36,6 +40,8 @@ class SupercomboFullTorchInputs(TypedDict):
     big_input_imgs: torch.Tensor
     desire: torch.Tensor
     traffic_convention: torch.Tensor
+    nav_features: torch.Tensor
+    nav_instructions: torch.Tensor
     lateral_control_params: torch.Tensor
     prev_desired_curv: torch.Tensor
     features_buffer: torch.Tensor

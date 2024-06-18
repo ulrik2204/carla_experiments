@@ -16,6 +16,8 @@ class SupercomboInputShapes(Constant):
     LATERAL_CONTROL_PARAMS = (2,)
     PREV_DESIRED_CURV = (100, 1)
     FEATURES_BUFFER = (99, 512)
+    NAV_FEATURES = (1, 256)
+    NAV_INSTRUCTIONS = (1, 150)
     INPUT_IMGS = (12, 128, 256)
     BIG_INPUT_IMGS = (12, 128, 256)
 
