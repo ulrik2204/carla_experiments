@@ -9,13 +9,13 @@ import onnx
 import onnxruntime as ort
 import torch
 
-from openpilot_exploration.common.constants import (
+from openpilot_exploration.openpilot_common.constants import (
     SUPERCOMBO_META_SLICES,
     SUPERCOMBO_OUTPUT_SLICES,
     SUPERCOMBO_PLAN_SLICES,
 )
-from openpilot_exploration.common.openpilot_repo import download_github_file
-from openpilot_exploration.common.types_common import (
+from openpilot_exploration.openpilot_common.openpilot_repo import download_github_file
+from openpilot_exploration.openpilot_common.types_common import (
     FirstSliceSupercomboOutput,
     MetaSliced,
     MetaTensors,

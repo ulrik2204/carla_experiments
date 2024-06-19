@@ -24,13 +24,13 @@ from openpilot_exploration.carla_utils.spawn import (
     spawn_walker_bots,
 )
 from openpilot_exploration.carla_utils.types_carla_utils import SegmentConfigResult
-from openpilot_exploration.common.utils_op_deepdive import (
+from openpilot_exploration.carla_eval.utils_op_deepdive import (
     T_ANCHORS,
     frd_waypoints_to_fru,
     setup_calling_op_deepdive,
     transform_images,
 )
-from openpilot_exploration.models.op_deepdive import SequenceBaselineV1
+from openpilot_exploration.carla_eval.op_deepdive import SequenceBaselineV1
 
 CKPT_PATH = "./.weights/may09_epoch_99.pth"
 DT_CTRL = 0.01  # controlsd

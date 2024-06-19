@@ -1,4 +1,4 @@
-from openpilot_exploration.common.openpilot_repo import download_github_file
+from openpilot_exploration.openpilot_common.openpilot_repo import download_github_file
 
 # GitHub repository details
 USER = "commaai"

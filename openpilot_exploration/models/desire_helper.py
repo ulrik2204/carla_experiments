@@ -2,7 +2,7 @@ from typing import TypedDict
 
 import numpy as np
 
-from openpilot_exploration.common.types_common import CarStatePartial
+from openpilot_exploration.openpilot_common.types_common import CarStatePartial
 from openpilot_exploration.custom_logreader import log
 
 DT_MDL = 0.05  # model

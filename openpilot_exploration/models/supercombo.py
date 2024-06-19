@@ -1,4 +1,3 @@
-import sys
 from datetime import datetime
 from functools import partial
 from pathlib import Path
@@ -10,26 +9,9 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from openpilot_exploration.common.constants import SupercomboInputShapes
-from openpilot_exploration.common.position_and_rotation import euler2rot
-from openpilot_exploration.common.types_common import (
-    SupercomboEnv,
-    SupercomboFullNumpyInputs,
-    SupercomboOutputLogged,
-    SupercomboPartialNumpyInput,
-)
-from openpilot_exploration.common.utils_op_deepdive import calibrate_image
-from openpilot_exploration.common.utils_openpilot import (
-    DEVICE_CAMERAS,
-    DeviceCameraConfig,
-    warp_image,
-    warp_image_as_op_deepdive,
-    yuv_6_channel_to_rgb,
-)
-from openpilot_exploration.common.visualization import visualize_trajectory
 from openpilot_exploration.custom_logreader import log
-from openpilot_exploration.datasets.comma3x_dataset import (
-    Comma3xDataset,
+from openpilot_exploration.datasets.openpilot_dataset import (
+    OpenpilotDataset,
     get_desire_vector,
     get_dict_shape,
 )
@@ -43,8 +25,19 @@ from openpilot_exploration.models.supercombo_utils import (
     parse_supercombo_outputs,
     supercombo_tensors_at_idx,
     torch_dict_to_numpy,
-    total_loss,
 )
+from openpilot_exploration.openpilot_common.constants import SupercomboInputShapes
+from openpilot_exploration.openpilot_common.types_common import (
+    SupercomboEnv,
+    SupercomboFullNumpyInputs,
+    SupercomboOutputLogged,
+    SupercomboPartialNumpyInput,
+)
+from openpilot_exploration.openpilot_common.utils_openpilot import (
+    warp_image,
+    yuv_6_channel_to_rgb,
+)
+from openpilot_exploration.openpilot_common.visualization import visualize_trajectory
 
 PATH_TO_ONNX = Path(".weights/supercombo096.onnx")
 PATH_TO_METADATA = Path(".weights/supercombo_metadata.pkl")  # not used
@@ -138,7 +131,7 @@ def main_onnx():
     segment_length = segment_end_idx - segment_start_idx
     transform_narrow = partial(transform_image, image_type="narrow")
     transform_wide = partial(transform_image, image_type="wide")
-    dataset = Comma3xDataset(
+    dataset = OpenpilotDataset(
         folder="/home/ulrikro/datasets/CommaAI/2024_03_27_Are",
         segment_start_idx=segment_start_idx,
         segment_end_idx=segment_end_idx,
