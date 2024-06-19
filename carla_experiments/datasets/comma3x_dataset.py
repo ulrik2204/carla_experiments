@@ -643,21 +643,30 @@ class Comma3xDataset(Dataset):
             if self.wide_image_transforms is not None
             else wide_angle_frames
         )
-        resized_original_narrow = [
-            cv2.resize(frame, (512, 256)) for frame in narrow_frames_rgb
-        ]
+        # resized_original_narrow = [
+        #     cv2.resize(frame, (512, 256)) for frame in narrow_frames_rgb
+        # ]
+        # resized_original_wide = [
+        #     cv2.resize(frame, (512, 256)) for frame in wide_angle_frames
+        # ]
         resized_narrow = [
             cv2.resize(frame, (512, 256)) for frame in transformed_narrow_frames
         ]
         resized_wide = [
             cv2.resize(frame, (512, 256)) for frame in transformed_wide_angle_frames
         ]
-        stacked_original_narrow = torch.stack(
-            [
-                torch.tensor(frame, device=self.device, dtype=torch.uint8)
-                for frame in resized_original_narrow
-            ]
-        )
+        # stacked_original_narrow = torch.stack(
+        #     [
+        #         torch.tensor(frame, device=self.device, dtype=torch.uint8)
+        #         for frame in resized_original_narrow
+        #     ]
+        # )
+        # stacked_original_wide = torch.stack(
+        #     [
+        #         torch.tensor(frame, device=self.device, dtype=torch.uint8)
+        #         for frame in resized_original_wide
+        #     ]
+        # )
         stacked_narrow = torch.stack(
             [
                 torch.tensor(frame, device=self.device, dtype=torch.uint8)
@@ -672,11 +681,13 @@ class Comma3xDataset(Dataset):
         )
         final_narrow_frames = rgb_to_6_channel_yuv(stacked_narrow)
         final_wide_angle_frames = rgb_to_6_channel_yuv(stacked_wide)
-        final_original_narrow = rgb_to_6_channel_yuv(stacked_original_narrow)
+        # final_original_narrow = rgb_to_6_channel_yuv(stacked_original_narrow)
+        # final_original_wide = rgb_to_6_channel_yuv(stacked_original_wide)
         return (
             final_narrow_frames.to(dtype=torch.float32),
             final_wide_angle_frames.to(dtype=torch.float32),
-            final_original_narrow,
+            torch.stack([torch.tensor(frame) for frame in narrow_frames_rgb]),
+            torch.stack([torch.tensor(frame) for frame in wide_angle_frames]),
         )
 
     def __len__(self) -> int:
@@ -745,12 +756,13 @@ class Comma3xDataset(Dataset):
             "device_type": [str(log.deviceState.deviceType) for log in rlog_relevant],
             "sensor": [str(log.roadCameraState.sensor) for log in rlog_relevant],
         }
-        narrow_frames, wide_angle_frames, original_narrows = self._get_video_frames(
-            idx, supercombo_env
+        narrow_frames, wide_angle_frames, original_narrows, original_wide = (
+            self._get_video_frames(idx, supercombo_env)
         )
         narrow_frames = concat_current_with_previous_frame(narrow_frames)
         wide_angle_frames = concat_current_with_previous_frame(wide_angle_frames)
-        original_narrows = concat_current_with_previous_frame(original_narrows)
+        # original_narrows = concat_current_with_previous_frame(original_narrows)
+        # original_wide = concat_current_with_previous_frame(original_wide)
         traffic_convention = get_traffic_conventions_tensor_from_rlog(
             rlog_relevant, device=self.device
         )
@@ -768,7 +780,8 @@ class Comma3xDataset(Dataset):
             # In Openpilot you can choose whether to mainly use narrow or wide frames, here maining narrow
             "input_imgs": narrow_frames.permute(0, 3, 1, 2),
             "big_input_imgs": wide_angle_frames.permute(0, 3, 1, 2),
-            "untransformed_narrow_imgs": original_narrows.permute(0, 3, 1, 2),
+            "untransformed_narrow_imgs": original_narrows,  # .permute(0, 3, 1, 2),
+            "untransformed_wide_imgs": original_wide,  # .permute(0, 3, 1, 2),
         }
 
         model_outputs_list = [

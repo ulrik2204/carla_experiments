@@ -293,7 +293,6 @@ def normalize(img_pts):
 def denormalize(img_pts, intrinsics: Optional[np.ndarray] = None, width=W, height=H):
     # denormalizes image coordinates
     # accepts single pt or array of pts
-    print("denormalize: width, height", width, height)
     if intrinsics is None:
         intrinsics = eon_intrinsics
     img_pts = np.array(img_pts)

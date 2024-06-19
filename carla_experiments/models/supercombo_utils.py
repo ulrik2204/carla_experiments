@@ -265,25 +265,53 @@ def parse_supercombo_outputs(
     }
 
 
+def mean_l2_loss(
+    pred: torch.Tensor,
+    ground_truth: torch.Tensor,
+):
+    return (
+        (((pred[:, :, :2] - ground_truth[:, :, :2]) ** 2).sum(-1) ** 0.5).mean().item()
+    )
+
+
 def total_loss(
     pred: Union[SupercomboFullOutput, Dict],
     ground_truth: Union[SupercomboOutputLogged, Dict],
-) -> float:
+):
     # only calculate the loss for the predicted trajectory
-    p = pred["plan"]["position"]  # (1, 33, 3)
-    gt = ground_truth["plan"]["position"]  # (1, 33, 3)
-    # l2 loss only of x and y axis
-    return float(torch.mean(torch.pow(p[:, :, :2] - gt[:, :, :2], 2)))
-    diffs = []
-    for key, gt_value in ground_truth.items():
-        pred_value = pred[key]
-        if isinstance(pred_value, torch.Tensor):
-            diff = float(torch.sum(torch.abs(pred_value - gt_value)))
-            diffs.append(diff)
-        if isinstance(pred_value, dict):
-            diff = float(total_loss(pred_value, ground_truth[key]))
-            diffs.append(diff)
-    return sum(diffs) / len(diffs)
+    # p = pred["plan"]["position"]  # (1, 33, 3)
+    # gt = ground_truth["plan"]["position"]  # (1, 33, 3)
+    # # l2 loss only of x and y axis
+    # return float(torch.mean(torch.pow(p[:, :, :2] - gt[:, :, :2], 2)))
+
+    def recursive_sum_count(d1, d2) -> Tuple[torch.Tensor, int]:
+        total_loss = torch.tensor(0.0)
+        count = 0
+
+        for key in d1:
+            if key in d2:
+                lowered = key.lower()
+                if "std" in lowered or "prob" in lowered or "hidden_state" in lowered:
+                    continue
+                if isinstance(d1[key], dict) and isinstance(d2[key], dict):
+                    loss, num_items = recursive_sum_count(d1[key], d2[key])
+                    total_loss += loss
+                    count += num_items
+                else:
+                    total_loss += (
+                        (((d1[key] - d2[key]) ** 2).sum(-1) ** 0.5).mean().item()
+                    )
+                    if torch.isnan(total_loss):
+                        print("NAN in key", key)
+                    count += 1
+
+        return total_loss, count
+
+    total_loss, count = recursive_sum_count(pred, ground_truth)
+    if count == 0:
+        return 0
+
+    return total_loss / count
 
 
 TTensorDict = TypeVar("TTensorDict", bound=Mapping)
