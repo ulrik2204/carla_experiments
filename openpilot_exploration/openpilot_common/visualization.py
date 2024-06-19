@@ -10,6 +10,7 @@ from matplotlib.axes import Axes
 from torch import fill
 
 from openpilot_exploration.models.supercombo_utils import ModelConstants
+from openpilot_exploration.openpilot_common.camera import tici_fcam_intrinsics
 from openpilot_exploration.openpilot_common.types_common import (
     SupercomboFullOutput,
     SupercomboOutputLogged,
@@ -102,8 +103,12 @@ def draw_lead(
     line_color=(0, 255, 0),
     intrinsics: Optional[np.ndarray] = None,
     rpy: Optional[np.ndarray] = np.array([0, 0, 0]),
+    label: str = "",
+    label_index: int = 0,
 ):
     width = 0.8
+    # lead_output: 6, 3
+    print("lead_output", lead_output.shape)
     # Assuming lead_output is a torch tensor
     # lead_output = F.pad(lead_output[:, :2], (0, 1))[0].unsqueeze(0).numpy()
 
@@ -169,6 +174,21 @@ def draw_lead(
         ).reshape((-1, 1, 2))
 
         cv2.polylines(img, [pts], True, line_color, thickness=2)
+    position = (10, img.shape[0] - 10 * (label_index + 1))
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.6
+    font_color = line_color
+    thickness = 1
+    cv2.putText(
+        img,
+        label,
+        position,
+        font,
+        font_scale,
+        font_color,
+        thickness,
+        lineType=cv2.LINE_AA,
+    )
 
 
 def draw_line(
@@ -178,6 +198,8 @@ def draw_line(
     line_color=(0, 255, 0),
     intrinsics: Optional[np.ndarray] = None,
     rpy: Optional[np.ndarray] = np.array([0, 0, 0]),
+    label: str = "",
+    label_index: int = 0,
 ):
 
     # device_path: N, 3
@@ -202,6 +224,21 @@ def draw_line(
         u2, v2 = img_pts_l[i]
         if line_color:
             cv2.line(img, (u1, v1), (u2, v2), line_color, thickness=2)
+    position = (10, img.shape[0] - 10 * (label_index + 1))
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.6
+    font_color = line_color
+    thickness = 1
+    cv2.putText(
+        img,
+        label,
+        position,
+        font,
+        font_scale,
+        font_color,
+        thickness,
+        lineType=cv2.LINE_AA,
+    )
 
 
 def draw_path(
@@ -422,7 +459,7 @@ def plot_driving_trajectory(
 
     trajectories = [pred_plan, gt_plan]
     confs = [plan_conf] + [1]
-    names = [f"pred_plan@{plan_conf}", "original_plan"]
+    names = [f"pred_plan@{plan_conf:.2f}", "original_plan"]
 
     ax3 = draw_trajectory_on_ax(
         ax3, trajectories, names, confs, ylim=(0, 200), xlim=(-10, 10)
@@ -550,7 +587,8 @@ def visualize_trajectory(
     gt_road_edges = add_x_axes_to_yz(gt["road_edges"][0])
     gt_road_edge_stds = stds_to_probs(gt["road_edge_stds"][0].tolist())
     gt_road_edge_labels = [
-        f"gt_road_edge_{i}@{1 - std:.2f}" for i, std in enumerate(gt_road_edge_stds)
+        f"original_road_edge_{i}@{1 - std:.2f}"
+        for i, std in enumerate(gt_road_edge_stds)
     ]
     gt_road_edge_colors = [(int(255 * prob), 0, 0) for prob in gt_road_edge_stds]
     create_plots(
@@ -577,7 +615,9 @@ def visualize_trajectory(
     gt_leads = to_3d(gt["lead"][0][:, :, :2])
     gt_lead_probs = gt["lead_prob"][0].tolist()
     gt_lead_colors = [(int(255 * prob), 0, 0) for prob in gt_lead_probs]
-    gt_lead_labels = [f"gt_lead_{i}@{prob:.2f}" for i, prob in enumerate(gt_lead_probs)]
+    gt_lead_labels = [
+        f"original_lead_{i}@{prob:.2f}" for i, prob in enumerate(gt_lead_probs)
+    ]
     create_plots(
         original_img,
         trajectories=pred_leads + gt_leads,
