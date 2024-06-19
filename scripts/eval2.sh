@@ -13,7 +13,7 @@ trap cleanup_and_exit SIGINT
 
 nohup sh ../Carla2/CARLA_0.9.15/CarlaUE4.sh &
 sleep 10
-poetry run python -m carla_experiments.carla_eval.eval_op_deepdive
+poetry run python -m openpilot_exploration.carla_eval.eval_op_deepdive
 # Check the exit status of the command
 if [ $? -eq 0 ]; then
     echo "Command succeeded."

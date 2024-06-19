@@ -33,7 +33,7 @@ while true; do
     nohup sh ../Carla2/CARLA_0.9.15/CarlaUE4.sh -RenderOffScreen &
     echo "Waiting for Carla to start..."
     sleep 10
-    poetry run python -m carla_experiments.datagen.generate_comma2k19_data --root-folder=$comma_folder --progress-file=$progress_file
+    poetry run python -m openpilot_exploration.datagen.generate_comma2k19_data --root-folder=$comma_folder --progress-file=$progress_file
     
     # Check the exit status of the command
     if [ $? -eq 0 ]; then
@@ -53,6 +53,6 @@ while true; do
     fi
 done
 
-poetry run python -m carla_experiments.datagen.extract_comma2k19 --root-folder=$root_folder --comma2k19-folder=$comma_folder  # TODO: Add args
+poetry run python -m openpilot_exploration.datagen.extract_comma2k19 --root-folder=$root_folder --comma2k19-folder=$comma_folder  # TODO: Add args
 sleep 2
 npx kill-port 2000

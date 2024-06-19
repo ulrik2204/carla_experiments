@@ -1,1 +1,1 @@
-poetry run python -m carla_experiments.train.train_simple $@
+poetry run python -m openpilot_exploration.train.train_simple $@

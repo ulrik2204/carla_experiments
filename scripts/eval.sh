@@ -1,1 +1,1 @@
-poetry run python -m carla_experiments.carla_eval.eval_simple_agent $@
+poetry run python -m openpilot_exploration.carla_eval.eval_simple_agent $@
