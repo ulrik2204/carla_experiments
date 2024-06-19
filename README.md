@@ -59,14 +59,39 @@ https://github.com/ulrik2204/carla_experiments/assets/65228579/dd34feff-5a17-489
 
 
 
-## Video of Supercombo on the Openpilot dataset
+## Video of Supercombo
+
+The following are videos of the Supercombo model. The videos include both the original outputs of Supercombo from the Openpilot dataset, and outputs of Supercombo being actively run on the dataset using the provided Comma3xDataset class in this repo. These videos prove that one can reproduce the outputs of Supercomobo by running inference on the Supercombo model, and that the provided Comma3xDataset class is sufficient to extract the necessary data to run the Supercombo model. There is a small discrepancy between the outputs of the original Supercombo model and the actively run model. This can be explained by the fact that the Openpilot dataset does not have the previous hidden states of the Supercombo model. Since Supercombo is a recurrent neural network, it needs to "warm up". This is the reason why the actively run model slowly becomes more similar to the original output, as the hidden states also become more similar. 
+
+### Predicted trajectory
+
+Below is a video of the predicted plan of the Supercombo model. Both the original output during data generation (called "original_plan") and the actively run model (called "pred_plan") is being shown. The confidence value for "pred_plan" is also shown along with the mean L2 distance to hte original output.
+
+
+https://github.com/ulrik2204/carla_experiments/assets/65228579/71b36638-0866-4a13-80cf-b5907046a736
+
+### Lane Lines
+
+Below is a video of the predicted lane lines of the Supercombo model. Both the original predicted lane lines during data generation ("gt_lane_line") and the actively run model (called "pred_lane_line") are shown along with the confidence values for "pred_lane_line" and the mean L2 distance to the original output. The line is colored darker the less confident the prediction is and is thus black for very unlikely predicted lane lines. 
+
+https://github.com/ulrik2204/carla_experiments/assets/65228579/4ae60192-b96d-403c-95c4-f6914461be37
+
+
+### Road edges
+
+Below is a video of the Supercombo model's predicted road edges. Both the original predicted road edges during data generation ("gt_road_edge") and the actively run model (called "pred_road_edge") are shown, along with the confidence values for "pred_road_edge" and the mean L2 distance to the original output. The line is colored darker the less confident the prediction is and is thus black for very unlikely predicted road edges. 
+
+
+https://github.com/ulrik2204/carla_experiments/assets/65228579/ea537d45-834a-401e-91a8-a78d2bd94b1d
 
 
 
+### Leading vehicle
+
+Below is a video of the Supercombo model's predicted leading vehicle(s). It shows both the original predicted leading vehicle during data generation ("gt_lead") and the actively run model (called "pred_lead"), along with the confidence values for "pred_lead" and the mean L2 distance to the original output. The box for the leading vehicle is colored darker the less confident the prediction is and is thus black for very unlikely predicted leading vehicles. 
 
 
-https://github.com/ulrik2204/carla_experiments/assets/65228579/84c28227-8966-496d-ac0a-2f8b9f083be0
-
+https://github.com/ulrik2204/carla_experiments/assets/65228579/893e2207-b1c1-401a-bd06-cc5adfa76b44
 
 
 
