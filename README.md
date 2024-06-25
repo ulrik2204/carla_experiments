@@ -75,9 +75,14 @@ https://github.com/ulrik2204/carla_experiments/assets/65228579/cecd2767-fc15-4fe
 
 ### OP-Deepdive in CARLA
 
-Each of 
+The models trained on Comma2k19 and on CARLA Dataset 2 were also qualitatively evalauted by being set up to drive around Town04 in CARLA. The goal with this was to see if they were able to drive at all. 
 
 #### OP-Deepdive trained with AdamW on Comma2k19 in CARLA
+
+Below is the video of the OP-Deepdive model trained with AdamW on Comma2k19 being set up in CARLA. The vehicle drives and is able to handle a shallow turn on the highway, although it crosses the lane lines on some occasions. One can conclude that the model gets acceptable results when set up to drive in CARLA. (The video is of low-qualityy to be able to upload it to GitHub)
+
+https://github.com/ulrik2204/carla_experiments/assets/65228579/bc893b45-634a-4820-a3ff-babcaee5b2db
+
 
 #### OP-Deepdive trained with SGD on Comma2k19 in CARLA
 
@@ -88,9 +93,15 @@ https://github.com/ulrik2204/carla_experiments/assets/65228579/c01837e2-b390-493
 
 #### OP-Deepdive trained with AdamW on CARLA Dataset 2 in CARLA
 
+This is the video of the OP-Deepdive model trained with AdamW on CARLA Dataset 2. This model is able to follow the line and handle the shallow highway bend, but predicts a much slower speed than the model trained on Comma2k19. This is likely because of the difference in speed distributions between the datasets.
+
+https://github.com/ulrik2204/carla_experiments/assets/65228579/dea597ba-2702-4260-b252-e8d0159dde7c
+
+
+
 #### OP-Deepdive trained with SGD on CARLA Dataset 2 in CARLA
 
-A version of the OP-Deepdive model trained on CARLA data from Town04 and Town06 in the same format as the Comma2k19 dataset was also set up to run in CARLA. This shows that the model predicts a similar driving pattern when trained on CARLA data as well.
+This is the video of the OP-Deepdive model trained with SGD on CARLA Dataset 2. This shows that the model predicts a similar driving pattern regardless of input, and as a result it crashes quite quickly.
 
 
 https://github.com/ulrik2204/carla_experiments/assets/65228579/dd34feff-5a17-4899-ac1d-6d9ee7504ac6
