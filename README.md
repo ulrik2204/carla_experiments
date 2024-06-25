@@ -116,33 +116,41 @@ The following are videos of the Supercombo model. The videos include both the or
 
 ### Predicted trajectory
 
-Below is a video of the predicted plan of the Supercombo model. Both the original output during data generation (called "original_plan") and the actively run model (called "pred_plan") is being shown. The confidence value for "pred_plan" is also shown along with the mean L2 distance to hte original output.
+Below is a video of the predicted plan of the Supercombo model. It shows the original output during data generation (called "original_plan") in red, and the actively run model (called "pred_plan"). The confidence value for "pred_plan" is also shown along with the mean L2 distance to the original output.
+
+https://github.com/ulrik2204/carla_experiments/assets/65228579/3633e905-d017-4392-8b62-96bfb369ffdd
 
 
-https://github.com/ulrik2204/carla_experiments/assets/65228579/71b36638-0866-4a13-80cf-b5907046a736
+
 
 ### Lane Lines
 
-Below is a video of the predicted lane lines of the Supercombo model. Both the original predicted lane lines during data generation ("gt_lane_line") and the actively run model (called "pred_lane_line") are shown along with the confidence values for "pred_lane_line" and the mean L2 distance to the original output. The line is colored darker the less confident the prediction is and is thus black for very unlikely predicted lane lines. 
+Below is a video of the predicted lane lines of the Supercombo model. Its shows the original predicted lane lines during data generation ("gt_lane_line") in red and the actively run model (called "pred_lane_line") along with the confidence values for "pred_lane_line" and the mean L2 distance to the original output. The line is colored darker the less confident the prediction is and is thus black for very unlikely predicted lane lines. 
 
-https://github.com/ulrik2204/carla_experiments/assets/65228579/4ae60192-b96d-403c-95c4-f6914461be37
+
+https://github.com/ulrik2204/carla_experiments/assets/65228579/8af1e213-f0bd-4df7-afdc-2a7777e56801
+
+
+
 
 
 ### Road edges
 
-Below is a video of the Supercombo model's predicted road edges. Both the original predicted road edges during data generation ("gt_road_edge") and the actively run model (called "pred_road_edge") are shown, along with the confidence values for "pred_road_edge" and the mean L2 distance to the original output. The line is colored darker the less confident the prediction is and is thus black for very unlikely predicted road edges. 
+Below is a video of the Supercombo model's predicted road edges. It shows the original predicted road edges during data generation ("gt_road_edge") in red and the actively run model (called "pred_road_edge") are shown, along with the confidence values for "pred_road_edge" and the mean L2 distance to the original output. The line is colored darker the less confident the prediction is and is thus black for very unlikely predicted road edges. 
 
 
-https://github.com/ulrik2204/carla_experiments/assets/65228579/ea537d45-834a-401e-91a8-a78d2bd94b1d
+https://github.com/ulrik2204/carla_experiments/assets/65228579/be4498c4-470b-4741-aae6-13923d82c1a9
+
+
 
 
 
 ### Leading vehicle
 
-Below is a video of the Supercombo model's predicted leading vehicle(s). It shows both the original predicted leading vehicle during data generation ("gt_lead") and the actively run model (called "pred_lead"), along with the confidence values for "pred_lead" and the mean L2 distance to the original output. The box for the leading vehicle is colored darker the less confident the prediction is and is thus black for very unlikely predicted leading vehicles. 
+Below is a video of the Supercombo model's predicted leading vehicle(s). It shows both the original predicted leading vehicle during data generation ("gt_lead") in red and the actively run model (called "pred_lead"), along with the confidence values for "pred_lead" and the mean L2 distance to the original output. The box for the leading vehicle is colored darker the less confident the prediction is and is thus black for very unlikely predicted leading vehicles. 
 
 
-https://github.com/ulrik2204/carla_experiments/assets/65228579/893e2207-b1c1-401a-bd06-cc5adfa76b44
+https://github.com/ulrik2204/carla_experiments/assets/65228579/5b200ef3-43d3-4e20-8dad-f81ee8a30929
 
 
 
